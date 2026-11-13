@@ -1,1 +1,1 @@
-{"name":"indo-account","private":true,"type":"module","scripts":{"check":"node --check shared/store.js && node --check 'Sign in/signin.js' && node --check 'Sign up/signup.js' && node --check management/management.js"}}
+{"name":"indo-account","private":true,"type":"module","scripts":{"check":"node --check shared/store.js && node --check 'Sign in/signin.js' && node --check 'Sign up/signup.js' && node --check 'Forgot password/forgot-password.js' && node --check management/management.js"}}
