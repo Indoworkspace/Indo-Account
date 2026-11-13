@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261114-0015';
+import {setup,user,esc} from '../shared/layout.js?v=20261114-0200';
 
 const u=user();
 const apps=[
