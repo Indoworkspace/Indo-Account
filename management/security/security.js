@@ -1,4 +1,4 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261113-2220';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261113-2221';
 
 const u=user();
 const icon={
@@ -22,7 +22,6 @@ setup('security',`<h1>Security &amp; sign-in</h1><p class="lead">Review sign-in 
   ${method('phone','Recovery phone',u.phone?`+91 ${esc(u.phone)}`:'Add a recovery phone number.','personal')}
   ${method('email','Recovery email',esc(u.secondary_email)||'Add a recovery email address.','personal')}
 </div></section>
-<form class="panel password-panel hidden" id="password"><div class="section-title"><h2>Change password</h2><button type="button" class="secondary" id="cancel-password">Cancel</button></div><div class="grid"><div class="field"><label>New password</label><input name="new" type="password" minlength="8" required></div><div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="8" required></div></div><button class="primary">Update password</button></form>
 <section class="security-section"><h2>More sign-in options</h2><p class="section-note">Additional protection methods will be available before the production backend launch.</p><div class="security-chips"><button type="button" data-coming>Recovery contacts</button><button type="button" data-coming>Authenticator app</button><button type="button" data-coming>Passkeys &amp; security keys</button></div></section>
 <section class="security-section"><h2>Your devices</h2><p class="section-note">Where your Indo Account is currently signed in.</p><div class="security-list">${method('device',`${sessionCount} active ${sessionCount===1?'session':'sessions'}`,sessionCount?esc(u.sessions.map(s=>s.device).join(' · ')):'No active sessions.','devices')}</div><a class="text-action" href="../devices/index.html">Manage all devices <span>›</span></a></section>
 <section class="security-section"><h2>Your connected apps</h2><p class="section-note">Apps that can use your Indo Account identity.</p><div class="security-list">${method('apps',`${connectedApps} connected ${connectedApps===1?'app':'apps'}`,'Sankalp, Eyesearch, and Eyebrowse are managed separately.','apps')}</div><a class="text-action" href="../apps-data/index.html">Manage app access <span>›</span></a></section>`);
@@ -35,8 +34,21 @@ style.textContent=`
 `;
 document.head.append(style);
 
+const inlineStyle=document.createElement('style');
+inlineStyle.textContent=`
+  .inline-password{display:grid;gap:13px;padding:18px;background:#f8fbff;border-bottom:1px solid #e1e7ef}.inline-password-head{font-size:15px}.inline-password .field{margin:0}.inline-password-actions{display:flex;justify-content:flex-end;gap:10px}.inline-password-actions .primary{width:auto;min-width:145px;margin:0}
+  @media(max-width:760px){.inline-password{padding:14px 12px}.inline-password-actions{display:grid;grid-template-columns:1fr 1fr}.inline-password-actions .primary{width:100%;min-width:0}}
+`;
+document.head.append(inlineStyle);
+
 $('#two-step').onchange=e=>{Store.update({two_step:e.target.checked});toast(`Two-step protection turned ${e.target.checked?'on':'off'}.`)};
-document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{const action=button.dataset.action;if(action==='password'){const form=$('#password');form.classList.remove('hidden');form.scrollIntoView({behavior:'smooth',block:'center'});return}location.href=action==='personal'?'../personal-info/index.html':action==='devices'?'../devices/index.html':'../apps-data/index.html'});
-$('#cancel-password').onclick=()=>{$('#password').classList.add('hidden');$('#password').reset()};
-$('#password').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target);if(f.get('new')!==f.get('confirm'))return toast('Passwords do not match.');Store.changePassword(f.get('new'));e.target.reset();e.target.classList.add('hidden');toast('Password updated.')};
+function openPassword(button){
+  document.querySelector('.inline-password')?.remove();
+  const form=document.createElement('form');form.className='inline-password';
+  form.innerHTML=`<b class="inline-password-head">Change password</b><div class="grid"><div class="field"><label>New password</label><input name="new" type="password" minlength="8" required></div><div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="8" required></div></div><div class="inline-password-actions"><button type="button" class="secondary" data-cancel>Cancel</button><button class="primary">Update password</button></div>`;
+  button.insertAdjacentElement('afterend',form);
+  form.querySelector('[data-cancel]').onclick=()=>form.remove();
+  form.onsubmit=e=>{e.preventDefault();const f=new FormData(form);if(f.get('new')!==f.get('confirm'))return toast('Passwords do not match.');Store.changePassword(f.get('new'));form.remove();toast('Password updated.')};
+}
+document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{const action=button.dataset.action;if(action==='password'){openPassword(button);return}location.href=action==='personal'?'../personal-info/index.html':action==='devices'?'../devices/index.html':'../apps-data/index.html'});
 document.querySelectorAll('[data-coming]').forEach(button=>button.onclick=()=>toast('This security method will be enabled with the production backend.'));
