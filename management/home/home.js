@@ -28,10 +28,6 @@ mobileStyle.textContent=`@media(max-width:760px){
   .overview-card{min-height:72px;padding:12px;gap:11px}
   .overview-copy b{font-size:14px;line-height:1.25}
   .overview-copy small{font-size:12px;line-height:1.38}
-  .app-card{text-align:left;display:grid;grid-template-columns:56px minmax(0,1fr);column-gap:13px;align-items:center}
-  .app-card .app-badge{grid-row:span 3;margin:0;width:54px;height:54px}
-  .app-card h3,.app-card p{margin:0}
-  .app-card .secondary{width:max-content;margin-top:9px}
 }
 @media(max-width:390px){
   .quick-actions a{font-size:11px}
