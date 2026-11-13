@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261113-2210';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261113-2230';
 
 const u=user();
 const icons={
