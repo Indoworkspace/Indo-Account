@@ -28,9 +28,9 @@ setup('personal-info',`<h1>Personal info</h1><p class="lead">Manage the informat
 const style=document.createElement('style');
 style.textContent=`
   .inline-editor{display:grid;gap:12px;padding:18px 20px;background:#f8fbff;border-bottom:1px solid #e1e7ef}
-  .inline-editor-head{display:flex;align-items:center;justify-content:space-between;gap:14px}.inline-editor-head b{font-size:15px}
+  .inline-editor-head b{font-size:15px}
   .inline-editor .field{margin:0}.inline-editor-actions{display:flex;justify-content:flex-end;gap:10px}.inline-editor-actions .primary{width:auto;margin:0;min-width:110px}
-  @media(max-width:760px){.inline-editor{padding:14px 12px}.inline-editor-actions{display:grid;grid-template-columns:1fr 1fr}.inline-editor-actions .primary{width:100%;min-width:0}.inline-editor-head .secondary{padding:8px 11px}.inline-editor .field input,.inline-editor .field select{font-size:16px}}
+  @media(max-width:760px){.inline-editor{padding:14px 12px}.inline-editor-actions{display:grid;grid-template-columns:1fr 1fr}.inline-editor-actions .primary{width:100%;min-width:0}.inline-editor .field input,.inline-editor .field select{font-size:16px}}
 `;
 document.head.append(style);
 
@@ -43,7 +43,7 @@ function renderEditor(key,button){
   if(key==='gender')control=`<select id="edit-value"><option value="">Select gender</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select>`;
   document.querySelector('.inline-editor')?.remove();
   const editor=document.createElement('div');editor.className='inline-editor';
-  editor.innerHTML=`<div class="inline-editor-head"><b>Edit ${esc(label)}</b><button class="secondary" type="button" data-close>Close</button></div><div class="field"><label>${esc(label)}</label>${control}</div><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary" type="button" id="save-editor">Save</button></div>`;
+  editor.innerHTML=`<div class="inline-editor-head"><b>Edit ${esc(label)}</b></div><div class="field"><label>${esc(label)}</label>${control}</div><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary" type="button" id="save-editor">Save</button></div>`;
   button.insertAdjacentElement('afterend',editor);
   const field=editor.querySelector('#edit-value');if(key==='language')field.value=u.language||'kn';if(key==='gender')field.value=u.gender||'';
   editor.querySelectorAll('[data-close]').forEach(close=>close.onclick=()=>editor.remove());
