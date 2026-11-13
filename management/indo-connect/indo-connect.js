@@ -1,4 +1,4 @@
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261113-2350';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261114-0015';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',
@@ -24,9 +24,9 @@ const connectionRows=activeConnections.map(connection=>`<article class="connect-
 </article>`).join('');
 
 setup('indo-connect',`<section class="connect-heading"><div><h1>Indo Connect</h1><p class="lead">Manage apps and websites where you use <strong>Continue with Indo</strong>.</p></div><span class="connect-count"><b>${activeConnections.length}</b> connected</span></section>
-<section class="connect-hero"><img src="../../assets/icons/indo-connect.svg" alt=""><div><h2>Your sign-in connections, under your control</h2><p>Third-party services appear here only after you approve an Indo sign-in request. Sankalp, Eyesearch, and Eyebrowse stay separately in App center.</p></div></section>
+<section class="connect-hero"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt=""><div><h2>Your sign-in connections, under your control</h2><p>Third-party services appear here only after you approve an Indo sign-in request. Sankalp, Eyesearch, and Eyebrowse stay separately in App center.</p></div></section>
 <section class="connect-section"><div class="section-title"><div><h2>Apps and websites</h2><p>Review access or disconnect a service at any time.</p></div></div>
-  ${activeConnections.length?`<label class="connection-search"><span aria-hidden="true">⌕</span><input id="connection-search" type="search" placeholder="Search connected services" aria-label="Search connected services"></label><div class="connection-list" id="connection-list">${connectionRows}</div><p class="no-results hidden" id="no-results">No connected service matches your search.</p>`:`<article class="connect-empty"><span class="empty-art"><img src="../../assets/icons/indo-connect.svg" alt=""></span><h3>No services connected yet</h3><p>When you choose <strong>Continue with Indo</strong> on another app or website and approve access, it will appear here.</p></article>`}
+  ${activeConnections.length?`<label class="connection-search"><span aria-hidden="true">⌕</span><input id="connection-search" type="search" placeholder="Search connected services" aria-label="Search connected services"></label><div class="connection-list" id="connection-list">${connectionRows}</div><p class="no-results hidden" id="no-results">No connected service matches your search.</p>`:`<article class="connect-empty"><span class="empty-art"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt=""></span><h3>No services connected yet</h3><p>When you choose <strong>Continue with Indo</strong> on another app or website and approve access, it will appear here.</p></article>`}
 </section>
 <section class="connect-section"><div class="section-title"><div><h2>Built for private sign-in</h2><p>Indo Connect shares only what you approve.</p></div></div><div class="protection-grid">
   <article><span class="protection-icon">●</span><h3>Password stays private</h3><p>Other services never receive or store your Indo Account password.</p></article>

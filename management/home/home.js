@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261113-2350';
+import {setup,user,esc} from '../shared/layout.js?v=20261114-0015';
 
 const u=user();
 const apps=[
@@ -6,7 +6,8 @@ const apps=[
   ['Eyesearch','Search Engine','../apps-data/eyesearch/index.html','eye'],
   ['Eyebrowse','Browser','../apps-data/eyebrowse/index.html','browse']
 ];
-const asset=name=>`../../assets/icons/${name}.svg`;
+const homeIcons={security:'shield-check-duotone.svg','personal-info':'identification-card-duotone.svg',sankalp:'chat-teardrop-dots-duotone.svg','indo-connect':'plugs-connected-duotone.svg'};
+const asset=name=>`../../assets/icons/phosphor/${homeIcons[name]}`;
 
 setup('home',`<div class="search-box">⌕ <span>Search Indo Account</span></div>
 <div class="quick-actions"><a href="../security/index.html">My password</a><a href="../devices/index.html">Devices</a><a href="../apps-data/index.html">My apps</a><a href="../indo-connect/index.html">Indo Connect</a><a href="../privacy/index.html">Data &amp; privacy</a></div>
