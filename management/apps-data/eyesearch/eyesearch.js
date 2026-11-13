@@ -1,2 +1,2 @@
-import {setup} from '../../shared/layout.js';
+import {setup} from '../../shared/layout.js?v=20261113-2240';
 setup('eyesearch',`<article class="panel app-placeholder"><div class="app-badge eye">E</div><h1>Eyesearch</h1><p class="lead">Your Eyesearch app space is ready.</p><p>Search settings and activity controls will appear here after Eyesearch is connected. This page does not collect or connect search data yet.</p><span class="badge soon">App space reserved</span></article>`,'../../');
