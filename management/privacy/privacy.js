@@ -1,4 +1,4 @@
-import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261113-2315';
+import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261113-2320';
 
 const icon={
   export:'<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
@@ -9,10 +9,10 @@ const svg=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icon[name]}</svg>
 
 setup('privacy',`<h1>Privacy center</h1><p class="lead">Control, download, and manage your Indo Account data.</p>
 <section class="privacy-section"><h2>Your data</h2><p class="privacy-note">Manage shared account information and app-specific activity separately.</p><div class="privacy-list">
-  <article class="privacy-row"><span class="privacy-icon">${svg('export')}</span><div class="privacy-copy"><h3>Download my data</h3><p>Export your profile, connected apps, sessions, and billing information as a JSON file.</p></div><button class="secondary privacy-action" id="export" type="button">Export data</button></article>
+  <article class="privacy-row"><span class="privacy-icon">${svg('export')}</span><div class="privacy-copy"><h3>Download my data</h3><p>Export your profile, connected apps and active sessions as a JSON file.</p></div><button class="secondary privacy-action" id="export" type="button">Export data</button></article>
   <article class="privacy-row"><span class="privacy-icon">${svg('apps')}</span><div class="privacy-copy"><h3>App-specific data</h3><p>Manage Sankalp, Eyesearch, and Eyebrowse data independently.</p></div><a class="secondary privacy-action" href="../apps-data/index.html">Manage app data</a></article>
 </div></section>
-<section class="privacy-section danger-section"><h2>Account deletion</h2><p class="privacy-note">This action permanently removes your entire Indo Account.</p><article class="privacy-row danger-row"><span class="privacy-icon danger-icon">${svg('delete')}</span><div class="privacy-copy"><h3>Delete full Indo Account</h3><p>Remove your profile, app partitions, sessions, billing information, and lookup records.</p></div><button class="danger privacy-action" id="delete" type="button">Delete account</button></article></section>`);
+<section class="privacy-section danger-section"><h2>Account deletion</h2><p class="privacy-note">This action permanently removes your entire Indo Account.</p><article class="privacy-row danger-row"><span class="privacy-icon danger-icon">${svg('delete')}</span><div class="privacy-copy"><h3>Delete full Indo Account</h3><p>Remove your profile, app partitions, sessions, and lookup records.</p></div><button class="danger privacy-action" id="delete" type="button">Delete account</button></article></section>`);
 
 const style=document.createElement('style');
 style.textContent=`
@@ -23,4 +23,4 @@ style.textContent=`
 document.head.append(style);
 
 $('#export').onclick=()=>download(Store.exportData(),'indo-account-data.json');
-$('#delete').onclick=()=>modal('Delete full Indo Account','<p>This permanently removes your profile, apps, sessions, billing information, and lookup records.</p><div class="field"><label>Type DELETE to confirm</label><input id="delete-word" autocomplete="off"></div>',()=>{if($('#delete-word').value!=='DELETE'){toast('Type DELETE to confirm.');return false}Store.deleteCurrent();location.replace('../../Sign%20in/index.html')},true);
+$('#delete').onclick=()=>modal('Delete full Indo Account','<p>This permanently removes your profile, apps, sessions, and lookup records.</p><div class="field"><label>Type DELETE to confirm</label><input id="delete-word" autocomplete="off"></div>',()=>{if($('#delete-word').value!=='DELETE'){toast('Type DELETE to confirm.');return false}Store.deleteCurrent();location.replace('../../Sign%20in/index.html')},true);
