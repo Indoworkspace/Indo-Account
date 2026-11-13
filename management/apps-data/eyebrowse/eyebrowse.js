@@ -1,1 +1,2 @@
-import {appPage} from '../app-page.js';appPage('EYEBROWSE','Eyebrowse Browser');
+import {setup} from '../../shared/layout.js';
+setup('eyebrowse',`<article class="panel app-placeholder"><div class="app-badge browse">B</div><h1>Eyebrowse</h1><p class="lead">Your Eyebrowse app space is ready.</p><p>Browser preferences and activity controls will appear here after Eyebrowse is connected. This page does not collect or connect browser data yet.</p><span class="badge soon">App space reserved</span></article>`,'../../');
