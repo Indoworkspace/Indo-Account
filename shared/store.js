@@ -1,0 +1,19 @@
+const KEY='indo_unified_app_table', SESSION='indo_active_session';
+const now=()=>new Date().toISOString();
+const id=()=>`usr_${crypto.randomUUID().replaceAll('-','').slice(0,18)}`;
+const baseApps={EYESEARCH:{name:'Eyesearch Engine & API',plan:'Developer',quota:'8,240 API credits',status:'Active',renewal:'15 Dec 2026'},SANKALPA:{name:'Sankalpa AI Assistant',plan:'Free',quota:'78 of 100 prompts',status:'Active',renewal:'01 Dec 2026'},PORTAL:{name:'Indobiz Web Portal',plan:'Starter',quota:'2 of 5 team seats',status:'Active',renewal:'20 Dec 2026'}};
+function demo(){const user={PK:'USER#usr_demo_yashwanth',SK:'PROFILE',user_id:'usr_demo_yashwanth',full_name:'Yashwanth Puttarajegowda',nickname:'Yashwanth',eyemail_id:'yashwanth@eyemail.in',secondary_email:'yashwanth.demo@gmail.com',secondary_email_verified:true,phone:'9876543210',phone_verified:false,dob:'2000-01-01',language:'kn',account_type:'Personal',account_status:'ACTIVE',created_at:now(),password:'password123',two_step:true,apps:baseApps,sessions:[{id:'sess_current',device:'Chrome on Chromebook',app:'Indo Account',location:'India',current:true},{id:'sess_mobile',device:'Android 15',app:'Sankalpa AI',location:'Bengaluru, India',current:false}],billing:{company:'',gstin:'',address:'',state:''},invoices:[{id:'INV-2026-1024',date:'24 Oct 2026',app:'Eyesearch',plan:'Developer plan',amount:'₹999',status:'Paid'}]};return {users:[user],lookups:{'LOOKUP#EYEMAIL#yashwanth@eyemail.in':user.user_id,'LOOKUP#EMAIL#yashwanth.demo@gmail.com':user.user_id,'LOOKUP#PHONE#9876543210':user.user_id}}}
+function db(){let data=localStorage.getItem(KEY);if(!data){data=demo();localStorage.setItem(KEY,JSON.stringify(data));return data}return JSON.parse(data)}
+function save(data){localStorage.setItem(KEY,JSON.stringify(data))}
+function cleanHandle(v){return v.trim().toLowerCase().replace(/@eyemail\.in$/,'')}
+export const Store={
+ init:db,
+ login(identifier,password){const d=db(), key=identifier.trim().toLowerCase();const user=d.users.find(u=>u.eyemail_id===key||u.secondary_email===key||u.phone===key.replace(/^\+91/,'').trim());if(!user||user.password!==password)throw Error('Identifier or password is incorrect.');localStorage.setItem(SESSION,user.user_id);return user},
+ current(){const active=localStorage.getItem(SESSION);return db().users.find(u=>u.user_id===active)||null},
+ signout(){localStorage.removeItem(SESSION)},
+ create(profile){const d=db(), handle=cleanHandle(profile.handle), eyemail=`${handle}@eyemail.in`, uid=id();if(d.users.some(u=>u.eyemail_id===eyemail||u.secondary_email===profile.secondary_email||u.phone===profile.phone))throw Error('This Indo ID, email, or mobile number is already registered.');const user={PK:`USER#${uid}`,SK:'PROFILE',user_id:uid,full_name:profile.full_name,nickname:profile.nickname,eyemail_id:eyemail,secondary_email:profile.secondary_email,secondary_email_verified:true,phone:profile.phone,phone_verified:false,dob:profile.dob,language:profile.language,account_type:'Personal',account_status:'ACTIVE',created_at:now(),password:profile.password,two_step:true,apps:baseApps,sessions:[{id:'sess_current',device:'Current browser',app:'Indo Account',location:'India',current:true}],billing:{company:'',gstin:'',address:'',state:''},invoices:[]};d.users.push(user);d.lookups[`LOOKUP#EYEMAIL#${eyemail}`]=user.user_id;d.lookups[`LOOKUP#EMAIL#${profile.secondary_email}`]=user.user_id;d.lookups[`LOOKUP#PHONE#${profile.phone}`]=user.user_id;save(d);localStorage.setItem(SESSION,user.user_id);return user},
+ update(changes){const d=db(),u=d.users.find(x=>x.user_id===localStorage.getItem(SESSION));if(!u)throw Error('Please sign in again.');Object.assign(u,changes);save(d);return u},
+ changePassword(value){return this.update({password:value})},
+ removeSession(sessionId){const u=this.current();this.update({sessions:u.sessions.filter(s=>s.id===sessionId)});},
+ removeOthers(){const u=this.current();this.update({sessions:u.sessions.filter(s=>s.current)});}
+};
