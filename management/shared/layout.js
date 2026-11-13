@@ -63,6 +63,13 @@ export function setup(active,content,prefix='../'){
     .app-card h2,.app-card h3{overflow-wrap:anywhere}
     .app-card p{overflow-wrap:anywhere}
     .app-card .secondary{align-self:flex-end;margin-top:auto;white-space:nowrap}
+    .app-list{display:grid;gap:12px}
+    .app-list .app-card{display:grid;grid-template-columns:64px minmax(0,1fr) auto;column-gap:16px;align-items:center;min-height:96px;padding:16px 18px}
+    .app-list .app-badge{grid-column:1;margin:0;width:60px;height:60px}
+    .app-list .app-card-copy{grid-column:2;min-width:0}
+    .app-list .app-card-copy h2,.app-list .app-card-copy h3{margin:0 0 3px}
+    .app-list .app-card-copy p{margin:2px 0}
+    .app-list .secondary{grid-column:3;align-self:center;justify-self:end;margin:0}
     .switch-row button{flex:0 0 auto}
     .device button{flex:0 0 auto}
     @media(max-width:760px){
@@ -77,6 +84,12 @@ export function setup(active,content,prefix='../'){
       .device .secondary{align-self:flex-end}
       .app-card{padding:16px;min-height:118px}
       .app-card .secondary{min-height:40px;display:inline-grid;place-items:center}
+      .app-list{gap:10px}
+      .app-list .app-card{grid-template-columns:54px minmax(0,1fr) auto;column-gap:12px;min-height:82px;padding:14px}
+      .app-list .app-badge{width:52px;height:52px}
+      .app-list .app-card-copy h2,.app-list .app-card-copy h3{font-size:16px}
+      .app-list .app-card-copy p{font-size:13px;line-height:1.35}
+      .app-list .secondary{grid-column:3;grid-row:1;align-self:center;justify-self:end;margin:0;padding:9px 11px;font-size:12px}
       .home-section .app-card,.content>.panel .grid.three .app-card{display:grid;grid-template-columns:56px minmax(0,1fr) auto;column-gap:13px;align-items:center}
       .home-section .app-card .app-badge,.content>.panel .grid.three .app-card .app-badge{grid-row:span 2;margin:0;width:54px;height:54px}
       .home-section .app-card h2,.home-section .app-card h3,.content>.panel .grid.three .app-card h2,.content>.panel .grid.three .app-card h3{grid-column:2;margin:0}
@@ -88,6 +101,11 @@ export function setup(active,content,prefix='../'){
       .home-section .app-card,.content>.panel .grid.three .app-card{grid-template-columns:52px minmax(0,1fr);column-gap:11px}
       .home-section .app-card .app-badge,.content>.panel .grid.three .app-card .app-badge{width:50px;height:50px}
       .home-section .app-card .secondary,.content>.panel .grid.three .app-card .secondary{grid-column:1/-1;grid-row:auto;justify-self:stretch;width:100%;margin-top:12px}
+      .app-list .app-card{grid-template-columns:48px minmax(0,1fr) auto;column-gap:9px;padding:12px}
+      .app-list .app-badge{width:46px;height:46px;font-size:19px}
+      .app-list .app-card-copy h2,.app-list .app-card-copy h3{font-size:15px}
+      .app-list .app-card-copy p{font-size:12px}
+      .app-list .secondary{grid-column:3;grid-row:1;justify-self:end;align-self:center;width:auto;margin:0;padding:8px 9px;font-size:11px}
     }
   `;
   document.head.append(responsiveStyle);
