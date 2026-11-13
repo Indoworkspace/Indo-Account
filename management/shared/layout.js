@@ -4,7 +4,6 @@ const icons={
   home:'<path d="m3 10 9-7 9 7v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21v-6h6v6"/>',
   'personal-info':'<circle cx="12" cy="8" r="3.2"/><path d="M5 21c.8-4 3.2-6 7-6s6.2 2 7 6"/>',
   security:'<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
-  contacts:'<circle cx="9" cy="8" r="2.5"/><circle cx="16.5" cy="9" r="2"/><path d="M4.5 20c.6-3.4 2.2-5 4.8-5 2.7 0 4.3 1.6 4.9 5M14 16c3 0 4.8 1.2 5.3 4"/>',
   devices:'<rect x="4" y="4" width="16" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/>',
   privacy:'<path d="M12 3 20 6v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/>',
   'payments-gst':'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/>',
@@ -16,11 +15,11 @@ const icons={
   'account-actions':'<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>'
 };
 const groups=[
-  {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['contacts','Contacts'],['devices','Devices'],['privacy','Data & privacy'],['payments-gst','Payments & billing'],['notifications','Notifications']]},
+  {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['payments-gst','Payments & billing'],['notifications','Notifications']]},
   {title:'App center',items:[['sankalp','Sankalp'],['eyesearch','Eyesearch'],['eyebrowse','Eyebrowse']]},
   {title:'More',items:[['help-support','Help & support'],['account-actions','About & account']]}
 ];
-const paths={home:'home','personal-info':'personal-info',security:'security',contacts:'contacts',devices:'devices',privacy:'privacy','payments-gst':'payments-gst',notifications:'notifications',sankalp:'apps-data/sankalp',eyesearch:'apps-data/eyesearch',eyebrowse:'apps-data/eyebrowse','help-support':'help-support','account-actions':'account-actions'};
+const paths={home:'home','personal-info':'personal-info',security:'security',devices:'devices',privacy:'privacy','payments-gst':'payments-gst',notifications:'notifications',sankalp:'apps-data/sankalp',eyesearch:'apps-data/eyesearch',eyebrowse:'apps-data/eyebrowse','help-support':'help-support','account-actions':'account-actions'};
 const $=s=>document.querySelector(s),esc=(v='')=>{const e=document.createElement('div');e.textContent=v;return e.innerHTML},initials=s=>s.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
 
 export {Store,esc,$};
