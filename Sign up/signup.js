@@ -1,6 +1,6 @@
 import {Store} from '../shared/store.js';
 Store.init();
-const $=s=>document.querySelector(s),form=$('#signup-form');let otp='';
+const $=s=>document.querySelector(s),form=$('#signup-form');let otp='',sentEmail='';
 const reserved=['admin','support','noreply','verify','security','indo','eyesearch','sankalpa','portal','help','billing'];
 function message(t,good=false,target='#step5-message'){const m=$(target);m.textContent=t;m.className=good?'success':'error'}
 function fieldsOK(names){return names.every(n=>form.elements[n].reportValidity())}
@@ -10,7 +10,9 @@ function validHandle(){if(!fieldsOK(['handle','phone']))return false;const h=for
 $('#next1').onclick=()=>{if(fieldsOK(['full_name','nickname']))showStep(2)};$('#back1').onclick=()=>showStep(1);$('#next2').onclick=()=>{if(validDate())showStep(3)};$('#back2').onclick=()=>showStep(2);$('#next3').onclick=()=>{if(validHandle())showStep(4)};$('#back3').onclick=()=>showStep(3);$('#next4').onclick=()=>{if(validateFour())showStep(5)};$('#back4').onclick=()=>showStep(4);
 document.querySelector('.toggle').onclick=()=>{const p=form.elements.password;p.type=p.type==='password'?'text':'password';document.querySelector('.toggle').textContent=p.type==='password'?'Show':'Hide'};
 function validateFour(){if(!fieldsOK(['password','confirm_password']))return false;if(form.elements.password.value!==form.elements.confirm_password.value){message('Passwords do not match.',false,'#step4-message');return false}return true}
-function validateFive(){return fieldsOK(['language','secondary_email'])}
-function send(){if(!validateFive())return;otp=String(Math.floor(100000+Math.random()*900000));$('#otp-area').classList.remove('hidden');message('Verification OTP sent to your recovery email.',true);const t=document.createElement('div');t.className='toast';t.textContent=`Verification OTP: ${otp}`;document.body.append(t);setTimeout(()=>t.remove(),7000)}
-$('#send').onclick=send;$('#resend').onclick=send;
-form.onsubmit=e=>{e.preventDefault();if(!otp){message('Send and enter the verification OTP first.');return}if($('#otp').value!==otp){message('The verification OTP is incorrect.');return}const p=Object.fromEntries(new FormData(form));p.dob=`${p.dob_year}-${p.dob_month.padStart(2,'0')}-${p.dob_day.padStart(2,'0')}`;try{Store.create(p);location.href='../management/index.html'}catch(err){message(err.message)}};
+function validateFive(){return fieldsOK(['secondary_email'])}
+function updateOtpAction(){const email=form.elements.secondary_email;$('#send').disabled=!email.checkValidity();if(email.value.trim()!==sentEmail){otp='';$('#otp').value='';$('#review').disabled=true}}
+function send(){if(!validateFive())return;otp=String(Math.floor(100000+Math.random()*900000));sentEmail=form.elements.secondary_email.value.trim();$('#review').disabled=false;message('Verification OTP sent to your recovery email.',true);const t=document.createElement('div');t.className='toast';t.textContent=`Verification OTP: ${otp}`;document.body.append(t);setTimeout(()=>t.remove(),7000)}
+function review(){if(!otp){message('Send the verification OTP first.');return}if($('#otp').value!==otp){message('The verification OTP is incorrect.');return}const p=Object.fromEntries(new FormData(form));const dob=`${p.dob_day}/${p.dob_month}/${p.dob_year}`;$('#review-content').replaceChildren();[['Full name',p.full_name],['Nickname',p.nickname],['Date of birth',dob],['Gender',p.gender],['Indo ID',`${p.handle}@eyemail.in`],['Mobile',`+91 ${p.phone}`],['Recovery email',p.secondary_email]].forEach(([label,value])=>{const row=document.createElement('p');row.style.margin='7px 0';row.textContent=`${label}: ${value}`;$('#review-content').append(row)});$('#contact-area').classList.add('hidden');$('#review-area').classList.remove('hidden')}
+form.elements.secondary_email.addEventListener('input',updateOtpAction);$('#send').onclick=send;$('#review').onclick=review;$('#edit-details').onclick=()=>{$('#review-area').classList.add('hidden');$('#contact-area').classList.remove('hidden')};
+form.onsubmit=e=>{e.preventDefault();if(!otp||$('#otp').value!==otp){message('Verify the OTP before creating your account.');return}const p=Object.fromEntries(new FormData(form));p.dob=`${p.dob_year}-${p.dob_month.padStart(2,'0')}-${p.dob_day.padStart(2,'0')}`;try{Store.create(p);location.href='../management/index.html'}catch(err){message(err.message)}};
