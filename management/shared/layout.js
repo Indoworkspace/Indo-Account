@@ -24,11 +24,20 @@ const paths={home:'home','personal-info':'personal-info',security:'security',con
 const $=s=>document.querySelector(s),esc=(v='')=>{const e=document.createElement('div');e.textContent=v;return e.innerHTML},initials=s=>s.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
 
 export {Store,esc,$};
-export const user=()=>Store.current();
+const emptyUser=()=>({
+  full_name:'',nickname:'',eyemail_id:'',secondary_email:'',phone:'',dob:'',language:'kn',gender:'',two_step:false,
+  sessions:[],notifications:{security:false,signin:false,updates:false,billing:false,news:false},billing:{company:'',gstin:'',address:'',state:''},invoices:[],apps:{
+    SANKALPA:{name:'Sankalp',status:'Paused',connected:false,data:{history:[],saved:[],memory:[],preferences:{}}},
+    EYESEARCH:{name:'Eyesearch',status:'Paused',connected:false,data:{history:[],saved:[],memory:[],preferences:{}}},
+    EYEBROWSE:{name:'Eyebrowse',status:'Paused',connected:false,data:{history:[],saved:[],memory:[],preferences:{}}}
+  }
+});
+export const user=()=>Store.current()||emptyUser();
 
 export function setup(active,content,prefix='../'){
-  const u=user();
-  if(!u){location.replace(`${prefix}../Sign%20in/index.html`);return}
+  const signedIn=Store.current();
+  if(!signedIn){location.replace(`${prefix}../Sign%20in/index.html`);return}
+  const u=signedIn;
   const nav=groups.map(group=>`<div class="nav-group"><p class="nav-title">${group.title}</p><nav class="nav">${group.items.map(([key,label])=>`<a class="${key===active?'active':''}" href="${prefix}${paths[key]}/index.html"><span class="nav-icon icon-${key}"><img src="${prefix}../assets/icons/${key}.svg" alt="" aria-hidden="true"></span>${label}</a>`).join('')}</nav></div>`).join('');
   const profileMotion=`<div class="avatar-motion" aria-hidden="true"><span class="paint paint-blue"></span><span class="paint paint-green"></span><span class="paint paint-purple"></span><span class="paint paint-pink"></span><span class="paint paint-gold"></span><span class="paint paint-star">✦</span></div>`;
   document.body.innerHTML=`<style>
