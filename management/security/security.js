@@ -1,4 +1,4 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261113-2221';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261113-2222';
 
 const u=user();
 const icon={
@@ -11,8 +11,6 @@ const icon={
 };
 const svg=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icon[name]}</svg>`;
 const method=(name,title,detail,action,extra='')=>`<button class="security-item" type="button" data-action="${action}"><span class="security-icon">${svg(name)}</span><span><b>${title}</b><small>${detail}</small></span>${extra}<span class="security-arrow">›</span></button>`;
-const sessionCount=u.sessions.length;
-const connectedApps=Object.values(u.apps||{}).filter(app=>app.connected).length;
 
 setup('security',`<h1>Security &amp; sign-in</h1><p class="lead">Review sign-in methods, devices, and access to your Indo Account.</p>
 <section class="security-section"><h2>Recent security activity</h2><p class="section-note">Security events and important account alerts.</p><article class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>No recent security alerts</b><small>No unusual activity has been recorded in the last 28 days.</small></span><span class="badge">Protected</span></article></section>
@@ -21,10 +19,7 @@ setup('security',`<h1>Security &amp; sign-in</h1><p class="lead">Review sign-in 
   ${method('password','Password','Change your password any time.','password')}
   ${method('phone','Recovery phone',u.phone?`+91 ${esc(u.phone)}`:'Add a recovery phone number.','personal')}
   ${method('email','Recovery email',esc(u.secondary_email)||'Add a recovery email address.','personal')}
-</div></section>
-<section class="security-section"><h2>More sign-in options</h2><p class="section-note">Additional protection methods will be available before the production backend launch.</p><div class="security-chips"><button type="button" data-coming>Recovery contacts</button><button type="button" data-coming>Authenticator app</button><button type="button" data-coming>Passkeys &amp; security keys</button></div></section>
-<section class="security-section"><h2>Your devices</h2><p class="section-note">Where your Indo Account is currently signed in.</p><div class="security-list">${method('device',`${sessionCount} active ${sessionCount===1?'session':'sessions'}`,sessionCount?esc(u.sessions.map(s=>s.device).join(' · ')):'No active sessions.','devices')}</div><a class="text-action" href="../devices/index.html">Manage all devices <span>›</span></a></section>
-<section class="security-section"><h2>Your connected apps</h2><p class="section-note">Apps that can use your Indo Account identity.</p><div class="security-list">${method('apps',`${connectedApps} connected ${connectedApps===1?'app':'apps'}`,'Sankalp, Eyesearch, and Eyebrowse are managed separately.','apps')}</div><a class="text-action" href="../apps-data/index.html">Manage app access <span>›</span></a></section>`);
+</div></section>`);
 
 const style=document.createElement('style');
 style.textContent=`
