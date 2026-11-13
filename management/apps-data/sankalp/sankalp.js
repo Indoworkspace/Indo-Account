@@ -1,0 +1,2 @@
+import {setup} from '../../shared/layout.js';
+setup('sankalp',`<article class="panel app-placeholder"><div class="app-badge">S</div><h1>Sankalp</h1><p class="lead">Your Sankalp app space is ready.</p><p>Chat history, authenticator accounts, memory and integrations will appear here when Sankalp is connected. No Sankalp data is being copied or connected in this UI stage.</p><span class="badge soon">App space reserved</span></article>`,'../../');
