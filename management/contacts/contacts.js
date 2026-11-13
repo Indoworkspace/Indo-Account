@@ -1,0 +1,2 @@
+import {setup} from '../shared/layout.js';
+setup('contacts',`<article class="panel app-placeholder"><div class="app-badge eye">C</div><h1>Indo Contacts</h1><p class="lead">A private place for your phone-contact backup and sync.</p><p>Contacts are not connected yet. When this feature is enabled, contacts will stay in your shared Indo Account data and will not be duplicated inside every app.</p><span class="badge soon">Coming next</span></article>`);
