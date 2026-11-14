@@ -174,7 +174,14 @@ class DynamoAccountRepository:
         from boto3.dynamodb.types import TypeSerializer
 
         serializer = TypeSerializer()
-        return lambda item: {key: serializer.serialize(value) for key, value in item.items()}
+
+        def serialize_item(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
+            # TypeSerializer returns a top-level {"M": {...}} for a Python
+            # mapping. TransactWriteItems expects the inner attribute-value
+            # mapping as its Item payload.
+            return serializer.serialize(item)["M"]
+
+        return serialize_item
 
     def find_user_id(self, identifier: str) -> str | None:
         value = identifier.strip().lower()
