@@ -1,4 +1,4 @@
-import {Store as BaseStore} from './store.js?v=20261114-0600';
+import {Store as BaseStore} from './store.js?v=20261114-0700';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
@@ -18,6 +18,7 @@ const Store=BaseStore;
 const createAccount=BaseStore.create.bind(BaseStore);
 const loginAccount=BaseStore.login.bind(BaseStore);
 const currentAccount=BaseStore.current.bind(BaseStore);
+const deleteAccount=BaseStore.deleteCurrent.bind(BaseStore);
 
 Store.create=input=>{createAccount(input);return persistCurrentSession()};
 Store.login=(identifier,password)=>{loginAccount(identifier,password);return persistCurrentSession(['signin','Signed in','A browser signed in to your Indo Account.'])};
@@ -26,5 +27,7 @@ Store.signout=()=>{const data=read(),user=activeUser(data),sessionId=localStorag
 Store.signoutSession=sessionId=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const session=(user.sessions||[]).find(item=>item.id===sessionId),isCurrent=!!session?.current;user.sessions=user.sessions.filter(item=>item.id!==sessionId);addEvent(user,'session','Device signed out',`${session?.device||'A device'} was signed out.`);write(data);if(isCurrent)localStorage.removeItem(ACTIVE_USER_KEY);return isCurrent};
 Store.removeOthers=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).filter(session=>!session.current).length;user.sessions=user.sessions.filter(session=>session.current);if(removed)addEvent(user,'session','Other devices signed out',`${removed} other ${removed===1?'session was':'sessions were'} ended.`);write(data);return removed};
 Store.signoutAllDevices=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).length;user.sessions=[];addEvent(user,'session','All devices signed out',`${removed} ${removed===1?'session was':'sessions were'} ended.`);write(data);localStorage.removeItem(ACTIVE_USER_KEY);return removed};
+Store.exportData=()=>{const user=Store.current();if(!user)throw Error('Please sign in again.');return{export_version:'1.0',exported_at:now(),account:{user_id:user.user_id,indo_id:user.eyemail_id,account_type:user.account_type,account_status:user.account_status,created_at:user.created_at},profile:{full_name:user.full_name,nickname:user.nickname,gender:user.gender,date_of_birth:user.dob,preferred_language:user.language,profile_photo:user.profile_photo||'',recovery_email:user.secondary_email,recovery_email_verified:!!user.secondary_email_verified,mobile_number:user.phone,mobile_number_verified:!!user.phone_verified,addresses:{home:user.home_address,work:user.work_address,other:user.other_address}},apps:JSON.parse(JSON.stringify(user.apps||{})),connections:JSON.parse(JSON.stringify(user.oauth_connections||[])),sessions:JSON.parse(JSON.stringify(user.sessions||[])),security:{two_step:!!user.two_step,events:JSON.parse(JSON.stringify(user.security_events||[]))},notifications:JSON.parse(JSON.stringify(user.notifications||{})),billing:JSON.parse(JSON.stringify(user.billing||{})),invoices:JSON.parse(JSON.stringify(user.invoices||[]))}};
+Store.deleteCurrent=()=>{deleteAccount();localStorage.removeItem(DEVICE_SESSION_KEY)};
 
 export {Store};
