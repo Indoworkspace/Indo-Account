@@ -109,7 +109,6 @@ class DynamoAccountRepository:
             "account_type": "Personal",
             "account_status": "ACTIVE",
             "two_step": True,
-            "profile_photo": "",
             "home_address": {},
             "work_address": {},
             "other_address": {},
