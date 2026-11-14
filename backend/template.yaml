@@ -1,0 +1,41 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Indo Account FastAPI backend
+
+Parameters:
+  AllowedOrigins:
+    Type: String
+    Default: https://indoworkspace.github.io
+
+Resources:
+  IndoAccountApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: indo-account-api
+      CodeUri: .
+      Handler: app.main.handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      MemorySize: 512
+      Timeout: 15
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: UnifiedAppTable
+          ALLOWED_ORIGINS: !Ref AllowedOrigins
+          SESSION_DAYS: '30'
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: UnifiedAppTable
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - !Ref AllowedOrigins
+          AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
+          AllowHeaders: [Authorization, Content-Type]
+
+Outputs:
+  ApiUrl:
+    Description: Indo Account API base URL
+    Value: !GetAtt IndoAccountApiUrl.FunctionUrl
+
