@@ -1,4 +1,4 @@
-import {Store} from '../../shared/session-store.js?v=20261114-1500';
+import {Store} from '../../shared/session-store.js?v=20261114-1600';
 
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},
@@ -43,6 +43,9 @@ export function setup(active,content,prefix='../'){
   const responsiveStyle=document.createElement('style');
   responsiveStyle.id='indo-responsive-layout';
   responsiveStyle.textContent=`
+    .modal-backdrop{position:fixed;z-index:50;inset:0;display:grid;place-items:center;padding:20px;background:#17213266;backdrop-filter:blur(2px)}
+    .modal{width:min(100%,480px);max-height:min(82vh,680px);overflow:auto;padding:24px;border:1px solid #dce3ed;border-radius:18px;background:#fff;box-shadow:0 24px 70px #101b2d4a}
+    .modal h2{margin:0 0 10px;font-size:21px}.modal>p{margin:0 0 16px;color:#607087;line-height:1.55}.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.modal-actions .primary{width:auto;margin:0}.modal-actions button{min-width:96px}
     .content .panel,.content .home-section{min-width:0}
     .section-title{gap:14px}
     .section-title>*{min-width:0}
@@ -62,6 +65,7 @@ export function setup(active,content,prefix='../'){
     .device button{flex:0 0 auto}
     @media(max-width:760px){
       body.menu-open{overflow:hidden}
+      .modal-backdrop{align-items:end;padding:12px}.modal{width:100%;max-height:86dvh;padding:20px;border-radius:18px}.modal-actions{display:grid;grid-template-columns:1fr 1fr}.modal-actions button{width:100%;min-height:44px}
       .content{padding-inline:0}
       .section-title{align-items:center;flex-wrap:wrap;margin-bottom:14px}
       .section-title h2{flex:1 1 auto}
@@ -108,5 +112,18 @@ export function setup(active,content,prefix='../'){
   addEventListener('resize',()=>{if(innerWidth>760&&menu.classList.contains('open'))closeMenu()});
 }
 export function toast(message){const e=document.createElement('div');e.className='toast';e.textContent=message;document.body.append(e);setTimeout(()=>e.remove(),3000)}
-export function modal(title,body,onConfirm,danger=false){$('#modal-root').innerHTML=`<div class="modal-backdrop"><section class="modal"><h2>${esc(title)}</h2>${body}<div class="modal-actions"><button class="secondary" id="cancel">Cancel</button><button class="${danger?'danger':'primary'}" id="confirm">Confirm</button></div></section></div>`;$('#cancel').onclick=()=>$('#modal-root').innerHTML='';$('#confirm').onclick=()=>{if(onConfirm()!==false)$('#modal-root').innerHTML=''}}
+let modalCleanup=()=>{};
+export function modal(title,body,onConfirm,danger=false){
+  modalCleanup();
+  const root=$('#modal-root'),previous=document.activeElement,controller=new AbortController();
+  root.innerHTML=`<div class="modal-backdrop"><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><h2 id="modal-title">${esc(title)}</h2>${body}<div class="modal-actions"><button class="secondary" id="cancel" type="button">Cancel</button><button class="${danger?'danger':'primary'}" id="confirm" type="button">Confirm</button></div></section></div>`;
+  const backdrop=root.querySelector('.modal-backdrop'),dialog=root.querySelector('.modal'),cancel=$('#cancel'),confirm=$('#confirm');
+  const close=()=>{controller.abort();root.innerHTML='';modalCleanup=()=>{};if(previous instanceof HTMLElement)previous.focus()};
+  modalCleanup=close;
+  cancel.onclick=close;
+  confirm.onclick=()=>{if(onConfirm()!==false)close()};
+  backdrop.addEventListener('click',event=>{if(event.target===backdrop)close()},{signal:controller.signal});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();return}if(event.key==='Tab'){const focusable=[...dialog.querySelectorAll('button,input,select,textarea,a[href]')].filter(element=>!element.disabled&&!element.hidden);if(!focusable.length)return;const first=focusable[0],last=focusable.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}},{signal:controller.signal});
+  requestAnimationFrame(()=>{(dialog.querySelector('input:not([type="hidden"]),select,textarea')||cancel).focus()});
+}
 export function download(data,name){const url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);toast('Download started.')}

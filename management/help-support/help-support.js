@@ -1,4 +1,4 @@
-import {setup} from '../shared/layout.js?v=20261114-1500';
+import {setup} from '../shared/layout.js?v=20261114-1600';
 
 const topics=[
   ['How do I change my password?','Open Security & sign-in, select Password, enter your current password, and create a new strong password.'],
