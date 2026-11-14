@@ -178,8 +178,8 @@ class DynamoAccountRepository:
         auth = self.table.get_item(Key=self._auth_key(user_id), ConsistentRead=True).get("Item")
         if not auth or not verify_password(password, auth.get("password_hash", "")):
             raise AuthenticationError("Identifier or password is incorrect.")
-        profile = self.get_account_state(user_id)
-        return profile, self.create_bearer_session(user_id, device)
+        token = self.create_bearer_session(user_id, device)
+        return self.get_account_state(user_id), token
 
     def create_session(self, user_id: str, device: str) -> str:
         token = new_session_token()
