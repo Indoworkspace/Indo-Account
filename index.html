@@ -1,1 +1,26 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Indo Account</title></head><body><script>location.replace(localStorage.getItem('indo_active_session')?'./management/index.html':'./Sign%20in/index.html');</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Indo Account</title>
+</head>
+<body>
+  <noscript><p>JavaScript is required to open Indo Account. <a href="./Sign%20in/index.html">Continue to sign in</a>.</p></noscript>
+  <script>
+    (()=>{
+      const sessionKey='indo_active_session',databaseKey='indo_unified_app_table';
+      let signedIn=false;
+      try{
+        const userId=localStorage.getItem(sessionKey),database=JSON.parse(localStorage.getItem(databaseKey)||'{"users":[]}');
+        signedIn=Boolean(userId&&Array.isArray(database.users)&&database.users.some(user=>user.user_id===userId));
+        if(userId&&!signedIn)localStorage.removeItem(sessionKey);
+      }catch{
+        localStorage.removeItem(sessionKey);
+      }
+      location.replace(signedIn?'./management/index.html':'./Sign%20in/index.html');
+    })();
+  </script>
+</body>
+</html>
