@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261114-0600';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261114-1500';
 
 const signInPage='../../Sign%20in/index.html';
 

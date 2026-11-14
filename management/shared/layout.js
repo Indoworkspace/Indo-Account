@@ -1,4 +1,4 @@
-import {Store} from '../../shared/session-store.js?v=20261114-0800';
+import {Store} from '../../shared/session-store.js?v=20261114-1500';
 
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},
@@ -61,6 +61,7 @@ export function setup(active,content,prefix='../'){
     .switch-row button{flex:0 0 auto}
     .device button{flex:0 0 auto}
     @media(max-width:760px){
+      body.menu-open{overflow:hidden}
       .content{padding-inline:0}
       .section-title{align-items:center;flex-wrap:wrap;margin-bottom:14px}
       .section-title h2{flex:1 1 auto}
@@ -99,9 +100,12 @@ export function setup(active,content,prefix='../'){
   document.head.append(responsiveStyle);
   $('#signout').onclick=()=>{Store.signout();location.replace(`${prefix}../Sign%20in/index.html`)};
   const menu=$('#management-menu'),toggle=$('#menu-toggle'),scrim=$('#menu-scrim');
-  const closeMenu=()=>{menu.classList.remove('open');scrim.classList.remove('show');toggle.setAttribute('aria-expanded','false')};
-  toggle.onclick=()=>{const open=!menu.classList.contains('open');menu.classList.toggle('open',open);scrim.classList.toggle('show',open);toggle.setAttribute('aria-expanded',String(open))};
-  scrim.onclick=closeMenu;
+  const closeMenu=(returnFocus=false)=>{menu.classList.remove('open');scrim.classList.remove('show');document.body.classList.remove('menu-open');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','Open menu');if(returnFocus)toggle.focus()};
+  toggle.onclick=()=>{const open=!menu.classList.contains('open');menu.classList.toggle('open',open);scrim.classList.toggle('show',open);document.body.classList.toggle('menu-open',open);toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',open?'Close menu':'Open menu')};
+  scrim.onclick=()=>closeMenu();
+  menu.querySelectorAll('a').forEach(link=>link.addEventListener('click',()=>closeMenu()));
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&menu.classList.contains('open'))closeMenu(true)});
+  addEventListener('resize',()=>{if(innerWidth>760&&menu.classList.contains('open'))closeMenu()});
 }
 export function toast(message){const e=document.createElement('div');e.className='toast';e.textContent=message;document.body.append(e);setTimeout(()=>e.remove(),3000)}
 export function modal(title,body,onConfirm,danger=false){$('#modal-root').innerHTML=`<div class="modal-backdrop"><section class="modal"><h2>${esc(title)}</h2>${body}<div class="modal-actions"><button class="secondary" id="cancel">Cancel</button><button class="${danger?'danger':'primary'}" id="confirm">Confirm</button></div></section></div>`;$('#cancel').onclick=()=>$('#modal-root').innerHTML='';$('#confirm').onclick=()=>{if(onConfirm()!==false)$('#modal-root').innerHTML=''}}

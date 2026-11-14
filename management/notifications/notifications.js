@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261114-0800';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261114-1500';
 
 const u=user();
 const optional=[
