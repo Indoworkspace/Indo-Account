@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from .security import hash_password, new_session_token, token_digest, verify_password
+
+
+logger = logging.getLogger(__name__)
 
 
 def utc_now() -> str:
@@ -147,6 +151,14 @@ class DynamoAccountRepository:
                 ]
             )
         except client.exceptions.TransactionCanceledException as error:
+            # Keep the public response generic, but retain the exact DynamoDB
+            # cancellation codes in CloudWatch so a real conflict can be
+            # distinguished from throttling or another transaction failure.
+            reasons = (getattr(error, "response", {}) or {}).get("CancellationReasons") or []
+            logger.error(
+                "Signup transaction canceled; reason_codes=%s",
+                [reason.get("Code", "Unknown") for reason in reasons],
+            )
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))
@@ -376,4 +388,5 @@ class DynamoAccountRepository:
                 batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
             for key in lookup_keys:
                 batch.delete_item(Key=key)
+
 
