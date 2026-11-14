@@ -156,8 +156,14 @@ class DynamoAccountRepository:
             # distinguished from throttling or another transaction failure.
             reasons = (getattr(error, "response", {}) or {}).get("CancellationReasons") or []
             logger.error(
-                "Signup transaction canceled; reason_codes=%s",
-                [reason.get("Code", "Unknown") for reason in reasons],
+                "Signup transaction canceled; reason_details=%s",
+                [
+                    {
+                        "code": reason.get("Code", "Unknown"),
+                        "message": reason.get("Message", ""),
+                    }
+                    for reason in reasons
+                ],
             )
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 
