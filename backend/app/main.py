@@ -4,7 +4,6 @@ from typing import Annotated, Any
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -19,13 +18,6 @@ def build_repository() -> DynamoAccountRepository:
 
 repository = build_repository()
 app = FastAPI(title="Indo Account API", version="0.1.0", docs_url=None, redoc_url=None)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=list(settings.allowed_origins),
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
-)
 
 
 class SignupRequest(BaseModel):
