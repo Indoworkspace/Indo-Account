@@ -1,1 +1,1 @@
-{"name":"indo-account","private":true,"type":"module","scripts":{"check":"find management shared 'Sign in' 'Sign up' 'Forgot password' -name '*.js' -print0 | xargs -0 -n1 node --check"}}
+{"name":"indo-account","private":true,"type":"module","scripts":{"check":"npm run check:syntax && npm run check:paths","check:syntax":"find management shared 'Sign in' 'Sign up' 'Forgot password' scripts \\( -name '*.js' -o -name '*.mjs' \\) -print0 | xargs -0 -n1 node --check","check:paths":"node scripts/check-relative-paths.mjs"}}
