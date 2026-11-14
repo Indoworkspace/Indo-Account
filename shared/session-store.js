@@ -21,7 +21,7 @@ const currentAccount=BaseStore.current.bind(BaseStore);
 const deleteAccount=BaseStore.deleteCurrent.bind(BaseStore);
 
 Store.create=input=>{createAccount(input);return persistCurrentSession()};
-Store.login=(identifier,password)=>{loginAccount(identifier,password);return persistCurrentSession(['signin','Signed in','A browser signed in to your Indo Account.'])};
+Store.login=(identifier,password)=>{const raw=identifier.trim(),digits=raw.replace(/\D/g,'').replace(/^91(?=\d{10}$)/,''),normalized=raw.includes('@')?raw.toLowerCase():digits;loginAccount(normalized,password);return persistCurrentSession(['signin','Signed in','A browser signed in to your Indo Account.'])};
 Store.current=()=>{const user=currentAccount();return user?persistCurrentSession():null};
 Store.signout=()=>{const data=read(),user=activeUser(data),sessionId=localStorage.getItem(DEVICE_SESSION_KEY);if(user){user.sessions=(user.sessions||[]).filter(session=>session.id!==sessionId);addEvent(user,'signout','Signed out','This browser signed out of your Indo Account.');write(data)}localStorage.removeItem(ACTIVE_USER_KEY)};
 Store.signoutSession=sessionId=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const session=(user.sessions||[]).find(item=>item.id===sessionId),isCurrent=!!session?.current;user.sessions=user.sessions.filter(item=>item.id!==sessionId);addEvent(user,'session','Device signed out',`${session?.device||'A device'} was signed out.`);write(data);if(isCurrent)localStorage.removeItem(ACTIVE_USER_KEY);return isCurrent};
