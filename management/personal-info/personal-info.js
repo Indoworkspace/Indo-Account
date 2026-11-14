@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261114-0300';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261114-0400';
 
 const u=user();
 const iconFiles={
@@ -7,11 +7,12 @@ const iconFiles={
   home:'house-duotone.svg',work:'briefcase-duotone.svg',other:'map-pin-duotone.svg'
 };
 const readable={kn:'Kannada (kn)',en:'English (en)',hi:'Hindi (hi)'};
+const addressSummary=(address,fallback)=>{if(typeof address==='string')return address||fallback;const parts=[address?.line1,address?.city,address?.state,address?.postal_code,address?.country].filter(Boolean);return parts.length?parts.join(', '):fallback};
 const rows=[
   ['name','Full name','full_name',u.full_name,'text'],['nickname','Nickname','nickname',u.nickname,'text'],['gender','Gender','gender',u.gender||'Not set','select'],
   ['email','Recovery email','secondary_email',u.secondary_email,'email'],['phone','Mobile number','phone',u.phone?`+91 ${u.phone}`:'Add a mobile number','tel'],
   ['birthday','Birthday','dob',u.dob||'Not set','date'],['language','Language','language',readable[u.language]||'Kannada (kn)','select'],
-  ['home','Home address','home_address',u.home_address||'Add home address','text'],['work','Work address','work_address',u.work_address||'Add work address','text'],['other','Other address','other_address',u.other_address||'Add other address','text']
+  ['home','Home address','home_address',addressSummary(u.home_address,'Add home address'),'address'],['work','Work address','work_address',addressSummary(u.work_address,'Add work address'),'address'],['other','Other address','other_address',addressSummary(u.other_address,'Add other address'),'address']
 ];
 const icon=name=>`<img src="../../assets/icons/phosphor/${iconFiles[name]}" alt="" aria-hidden="true">`;
 const row=([kind,label,key,value])=>{const verified=key==='secondary_email'?u.secondary_email_verified:key==='phone'?u.phone_verified:null;return `<button class="info-row" data-key="${key}" type="button"><span class="info-icon">${icon(kind)}</span><span><b>${label}</b><small>${esc(value)}</small>${verified!==null?`<em class="verification-state ${verified?'verified':'unverified'}">${verified?'Verified':'Not verified'}</em>`:''}</span><span class="row-action">Edit</span></button>`};
@@ -37,7 +38,8 @@ style.textContent=`
   .inline-editor .field{margin:0}.inline-editor-actions{display:flex;justify-content:flex-end;gap:10px}.inline-editor-actions .primary{width:auto;margin:0;min-width:110px}
   .photo-editor-body{display:grid;grid-template-columns:88px minmax(0,1fr);gap:18px;align-items:center}.photo-preview{width:84px;height:84px;display:grid;place-items:center;border-radius:50%;overflow:hidden;background:linear-gradient(145deg,#8d62e4,#7350cc);color:#fff;font-size:24px;font-weight:800;box-shadow:0 0 0 4px #e9deff}.photo-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.photo-tools label{display:inline-block;cursor:pointer}.photo-tools input{position:absolute;inline-size:1px;block-size:1px;opacity:0;pointer-events:none}.photo-note{margin:9px 0 0;color:#607087;font-size:12px}.photo-remove[hidden]{display:none}
   .contact-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:end}.contact-input-wrap{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:stretch}.contact-prefix{display:grid;place-items:center;padding:0 12px;border:1px solid #cbd3df;border-right:0;border-radius:10px 0 0 10px;background:#f1f4f8;color:#526177;font-weight:700}.contact-input-wrap input{border-radius:0 10px 10px 0!important}.send-otp{height:44px;white-space:nowrap}.send-otp:disabled,.otp-stage button:disabled{cursor:not-allowed;opacity:.5}.contact-hint{min-height:18px;margin:3px 0 0;color:#607087;font-size:12px}.contact-hint.error,.otp-message.error{color:#bc1d1d}.otp-stage{display:grid;gap:10px;padding:14px;border:1px solid #d9e3f3;border-radius:12px;background:#fff}.otp-stage[hidden]{display:none}.test-otp{margin:0;padding:9px 11px;border-radius:9px;background:#fff6dc;color:#735400;font-size:12px}.otp-entry{display:grid;grid-template-columns:minmax(0,220px) auto;gap:9px;align-items:end}.otp-entry input{letter-spacing:.25em;font-size:18px;font-weight:750}.otp-message{min-height:18px;margin:0;color:#607087;font-size:12px}.resend-otp{white-space:nowrap}
-  @media(max-width:760px){.info-icon{width:29px;height:29px}.info-icon img{width:18px;height:18px}.row-photo{width:40px;height:40px}.profile-photo-row{grid-template-columns:44px minmax(0,1fr) auto}.inline-editor{padding:14px 12px}.inline-editor-actions{display:grid;grid-template-columns:1fr 1fr}.inline-editor-actions .primary{width:100%;min-width:0}.inline-editor .field input,.inline-editor .field select{font-size:16px}.photo-editor-body{grid-template-columns:68px minmax(0,1fr);gap:13px}.photo-preview{width:64px;height:64px;font-size:19px}.photo-tools{align-items:stretch}.photo-tools label,.photo-tools button{font-size:12px;padding:10px 11px}.contact-entry{grid-template-columns:1fr}.send-otp{width:100%}.otp-entry{grid-template-columns:minmax(0,1fr) auto}.resend-otp{padding-inline:10px;font-size:12px}}
+  .address-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.address-grid .field{margin:0 0 12px}.address-grid .wide{grid-column:1/-1}.editor-note{margin:0;color:#607087;font-size:12px}
+  @media(max-width:760px){.info-icon{width:29px;height:29px}.info-icon img{width:18px;height:18px}.row-photo{width:40px;height:40px}.profile-photo-row{grid-template-columns:44px minmax(0,1fr) auto}.inline-editor{padding:14px 12px}.inline-editor-actions{display:grid;grid-template-columns:1fr 1fr}.inline-editor-actions .primary{width:100%;min-width:0}.inline-editor .field input,.inline-editor .field select{font-size:16px}.photo-editor-body{grid-template-columns:68px minmax(0,1fr);gap:13px}.photo-preview{width:64px;height:64px;font-size:19px}.photo-tools{align-items:stretch}.photo-tools label,.photo-tools button{font-size:12px;padding:10px 11px}.contact-entry{grid-template-columns:1fr}.send-otp{width:100%}.otp-entry{grid-template-columns:minmax(0,1fr) auto}.resend-otp{padding-inline:10px;font-size:12px}.address-grid{grid-template-columns:1fr}.address-grid .wide{grid-column:auto}}
 `;
 document.head.append(style);
 
@@ -85,6 +87,19 @@ function renderContactEditor(key,button){
   updateInputState();input.focus();
 }
 
+function renderAddressEditor(key,button){
+  clearEditor();
+  const label=key==='home_address'?'Home address':key==='work_address'?'Work address':'Other address';
+  const current=typeof u[key]==='object'&&u[key]?u[key]:{line1:typeof u[key]==='string'?u[key]:'',line2:'',city:'',state:'',postal_code:'',country:'India'};
+  const editor=document.createElement('div');editor.className='inline-editor address-editor';
+  editor.innerHTML=`<div class="inline-editor-head"><b>Edit ${label}</b></div><div class="address-grid"><div class="field wide"><label for="address-line1">Address line</label><input id="address-line1" maxlength="120" value="${esc(current.line1||'')}" placeholder="House number and street"></div><div class="field wide"><label for="address-line2">Apartment, area, or landmark <span class="form-note">(optional)</span></label><input id="address-line2" maxlength="120" value="${esc(current.line2||'')}" placeholder="Apartment, area, or landmark"></div><div class="field"><label for="address-city">City</label><input id="address-city" maxlength="60" value="${esc(current.city||'')}" placeholder="City"></div><div class="field"><label for="address-state">State</label><input id="address-state" maxlength="60" value="${esc(current.state||'')}" placeholder="State"></div><div class="field"><label for="address-postal">PIN / postal code</label><input id="address-postal" maxlength="12" value="${esc(current.postal_code||'')}" placeholder="6-digit PIN code"></div><div class="field"><label for="address-country">Country</label><input id="address-country" maxlength="60" list="country-options" value="${esc(current.country||'India')}" placeholder="Country"><datalist id="country-options"><option value="India"><option value="Australia"><option value="Canada"><option value="United Kingdom"><option value="United States"></datalist></div></div><p class="editor-note" aria-live="polite">Required: address line, city, state, PIN/postal code, and country.</p><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary" type="button" id="save-address">Save</button></div>`;
+  button.insertAdjacentElement('afterend',editor);
+  const value=id=>editor.querySelector(id).value.trim(),note=editor.querySelector('.editor-note');
+  editor.querySelector('[data-close]').onclick=clearEditor;
+  editor.querySelector('#save-address').onclick=()=>{const address={line1:value('#address-line1'),line2:value('#address-line2'),city:value('#address-city'),state:value('#address-state'),postal_code:value('#address-postal').toUpperCase(),country:value('#address-country')};try{const saved=Store.updateAddress(key,address);u[key]=saved;button.querySelector('small').textContent=addressSummary(saved,`Add ${label}`);clearEditor();toast(`${label} saved.`)}catch(error){note.textContent=error.message;note.style.color='#bc1d1d'}};
+  editor.querySelector('#address-line1').focus();
+}
+
 function syncAvatar(){
   const content=u.profile_photo?`<img src="${esc(u.profile_photo)}" alt="${esc(u.full_name)} profile photo">`:esc(initials(u.full_name));
   document.querySelectorAll('.user-chip .avatar,.profile-main .avatar').forEach(avatar=>avatar.innerHTML=content);
@@ -129,18 +144,20 @@ function renderPhotoEditor(button){
 function renderEditor(key,button){
   if(key==='profile_photo')return renderPhotoEditor(button);
   if(key==='secondary_email'||key==='phone')return renderContactEditor(key,button);
+  if(['home_address','work_address','other_address'].includes(key))return renderAddressEditor(key,button);
   const item=rows.find(row=>row[2]===key);if(!item)return;
   const[,label,,value,type]=item;
   const current=u[key]||'';
   let control=`<input id="edit-value" type="${type==='select'?'text':type}" value="${esc(current)}">`;
   if(key==='language')control=`<select id="edit-value"><option value="kn">Kannada (kn)</option><option value="en">English (en)</option><option value="hi">Hindi (hi)</option></select>`;
   if(key==='gender')control=`<select id="edit-value"><option value="">Select gender</option><option>Male</option><option>Female</option><option>Non-binary</option><option>Prefer not to say</option></select>`;
+  if(key==='dob'){const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-13);const maxDate=`${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;control=`<input id="edit-value" type="date" min="1900-01-01" max="${maxDate}" value="${esc(current)}"><p class="editor-note">You must be at least 13 years old.</p>`}
   clearEditor();
   const editor=document.createElement('div');editor.className='inline-editor';
   editor.innerHTML=`<div class="inline-editor-head"><b>Edit ${esc(label)}</b></div><div class="field"><label>${esc(label)}</label>${control}</div><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary" type="button" id="save-editor">Save</button></div>`;
   button.insertAdjacentElement('afterend',editor);
   const field=editor.querySelector('#edit-value');if(key==='language')field.value=u.language||'kn';if(key==='gender')field.value=u.gender||'';
   editor.querySelectorAll('[data-close]').forEach(close=>close.onclick=clearEditor);
-  editor.querySelector('#save-editor').onclick=()=>{const next=field.value.trim();if(!next&&key!=='gender')return toast(`Enter your ${label.toLowerCase()}.`);if(key==='full_name'&&(next.length<2||next.length>80||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid full name (2–80 characters).');if(key==='nickname'&&(next.length<2||next.length>30||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid nickname (2–30 characters).');Store.update({[key]:next});u[key]=next;const displayed=key==='language'?(readable[next]||next):(next||'Not set');button.querySelector('small').textContent=displayed;if(key==='full_name'){document.querySelector('.profile-main h1').textContent=next;syncAvatar()}clearEditor();toast(`${label} saved.`)};
+  editor.querySelector('#save-editor').onclick=()=>{const next=field.value.trim();if(!next&&key!=='gender')return toast(`Enter your ${label.toLowerCase()}.`);if(key==='full_name'&&(next.length<2||next.length>80||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid full name (2–80 characters).');if(key==='nickname'&&(next.length<2||next.length>30||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid nickname (2–30 characters).');if(key==='dob'){const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-13);const maxDate=`${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;if(next<'1900-01-01'||next>maxDate)return toast('Enter a valid birthday. You must be at least 13 years old.')}Store.update({[key]:next});u[key]=next;const displayed=key==='language'?(readable[next]||next):(next||'Not set');button.querySelector('small').textContent=displayed;if(key==='full_name'){document.querySelector('.profile-main h1').textContent=next;syncAvatar()}clearEditor();toast(`${label} saved.`)};
 }
 document.querySelectorAll('.info-row[data-key]').forEach(button=>button.onclick=()=>renderEditor(button.dataset.key,button));
