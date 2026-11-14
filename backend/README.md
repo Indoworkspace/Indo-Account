@@ -19,6 +19,8 @@ and removes it in a `finally` block.
 ```bash
 cd backend
 sam build
+PYTHONPATH=.aws-sam/build/IndoAccountApi \
+  python3 -c 'from app.main import app; print(app.title)'
 sam deploy \
   --stack-name indo-account-api \
   --region ap-southeast-2 \
