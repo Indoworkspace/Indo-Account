@@ -1,4 +1,4 @@
-import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261114-1600';
+import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261114-2200';
 
 const icon={
   export:'<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
@@ -23,4 +23,4 @@ style.textContent=`
 document.head.append(style);
 
 $('#export').onclick=()=>download(Store.exportData(),'indo-account-data.json');
-$('#delete').onclick=()=>{modal('Delete full Indo Account','<p>This permanently removes your profile, all app partitions, sessions, connections, billing, and lookup records. This cannot be undone.</p><div class="field"><label for="delete-word">Type DELETE to confirm</label><input id="delete-word" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE"></div>',()=>{if($('#delete-word').value!=='DELETE'){toast('Type DELETE to confirm.');return false}Store.deleteCurrent();location.replace('../../Sign%20in/index.html')},true);const input=$('#delete-word'),confirm=$('#confirm');confirm.disabled=true;input.oninput=()=>confirm.disabled=input.value!=='DELETE';input.focus()};
+$('#delete').onclick=()=>{modal('Delete full Indo Account','<p>This permanently removes your profile, all app partitions, sessions, connections, billing, and lookup records. This cannot be undone.</p><div class="field"><label for="delete-word">Type DELETE to confirm</label><input id="delete-word" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="DELETE"></div>',async()=>{if($('#delete-word').value!=='DELETE'){toast('Type DELETE to confirm.');return false}try{await Store.deleteCurrent();location.replace('../../Sign%20in/index.html')}catch(error){toast(error.message);return false}},true);const input=$('#delete-word'),confirm=$('#confirm');confirm.disabled=true;input.oninput=()=>confirm.disabled=input.value!=='DELETE';input.focus()};

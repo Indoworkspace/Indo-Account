@@ -1,34 +1,63 @@
 import {Store as BaseStore} from './store.js?v=20261114-0800';
+import {Api} from './api-client.js?v=20261114-2100';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
 const DEVICE_SESSION_KEY='indo_device_session_id';
 const now=()=>new Date().toISOString();
+const clone=value=>JSON.parse(JSON.stringify(value));
 const read=()=>JSON.parse(localStorage.getItem(DATABASE_KEY)||'{"users":[],"lookups":{}}');
 const write=data=>localStorage.setItem(DATABASE_KEY,JSON.stringify(data));
 const activeUser=data=>data.users.find(user=>user.user_id===localStorage.getItem(ACTIVE_USER_KEY));
 
-function browserName(){const ua=navigator.userAgent;if(/Edg\//.test(ua))return'Edge';if(/Firefox\//.test(ua))return'Firefox';if(/Chrome\//.test(ua))return'Chrome';if(/Safari\//.test(ua))return'Safari';return'Web browser'}
-function platformName(){const ua=navigator.userAgent;if(/CrOS/.test(ua))return'ChromeOS';if(/Android/.test(ua))return'Android';if(/iPhone|iPad/.test(ua))return'iOS';if(/Windows/.test(ua))return'Windows';if(/Mac OS/.test(ua))return'macOS';if(/Linux/.test(ua))return'Linux';return'Unknown device'}
 function addEvent(user,type,title,detail){user.security_events??=[];user.security_events.unshift({id:`evt_${crypto.randomUUID().replaceAll('-','').slice(0,14)}`,type,title,detail,created_at:now()});user.security_events=user.security_events.slice(0,30)}
-function ensureCurrentSession(user){let id=localStorage.getItem(DEVICE_SESSION_KEY);if(!id){id=`sess_${crypto.randomUUID().replaceAll('-','').slice(0,18)}`;localStorage.setItem(DEVICE_SESSION_KEY,id)}user.sessions??=[];user.sessions=user.sessions.filter(session=>session.id!=='sess_current');user.sessions.forEach(session=>session.current=false);let session=user.sessions.find(item=>item.id===id);if(!session){session={id,device:`${browserName()} on ${platformName()}`,app:'Indo Account',location:'India',created_at:now()};user.sessions.unshift(session)}session.current=true;session.last_active=now();return session}
-function persistCurrentSession(event){const data=read(),user=activeUser(data);if(!user)return null;user.notifications={security:true,signin:true,account:true,updates:true,news:false,...user.notifications};ensureCurrentSession(user);if(event)addEvent(user,...event);write(data);return user}
+function normalizeRemote(user){const current=clone(user);current.profile_photo??='';current.gender??='Prefer not to say';current.language??='kn';current.two_step??=true;current.home_address??={};current.work_address??={};current.other_address??={};current.sessions??=[];current.security_events??=[];current.oauth_connections??=[];current.invoices??=[];current.notifications={security:true,signin:true,account:true,updates:true,billing:true,news:false,...current.notifications};current.billing={company:'',gstin:'',address:'',state:'',...current.billing};current.apps??={};return current}
+function mirrorRemote(user){const data=read(),normalized={...normalizeRemote(user),remote_managed:true},index=data.users.findIndex(item=>item.user_id===normalized.user_id);if(index===-1)data.users.push(normalized);else data.users[index]={...data.users[index],...normalized,password:undefined};write(data);localStorage.setItem(ACTIVE_USER_KEY,normalized.user_id);return activeUser(data)}
+function clearBrowserSession(){localStorage.removeItem(ACTIVE_USER_KEY);localStorage.removeItem(DEVICE_SESSION_KEY)}
+function remoteState(user){return{apps:clone(user.apps||{}),notifications:clone(user.notifications||{}),billing:clone(user.billing||{})}}
+function reportSyncError(error){window.dispatchEvent(new CustomEvent('indo-api-error',{detail:error.message}))}
+function syncRemote(){const user=activeUser(read());if(!Api.hasSession()||!user)return Promise.resolve(user);return Api.sync(remoteState(user)).then(mirrorRemote).catch(error=>{reportSyncError(error);throw error})}
 
 const Store=BaseStore;
-const createAccount=BaseStore.create.bind(BaseStore);
-const loginAccount=BaseStore.login.bind(BaseStore);
-const currentAccount=BaseStore.current.bind(BaseStore);
-const deleteAccount=BaseStore.deleteCurrent.bind(BaseStore);
+const localInit=BaseStore.init.bind(BaseStore);
+const localCreate=BaseStore.create.bind(BaseStore);
+const localLogin=BaseStore.login.bind(BaseStore);
+const localCurrent=BaseStore.current.bind(BaseStore);
+const localUpdate=BaseStore.update.bind(BaseStore);
+const localUpdateAddress=BaseStore.updateAddress.bind(BaseStore);
+const localSetTwoStep=BaseStore.setTwoStep.bind(BaseStore);
+const localChangePassword=BaseStore.changePassword.bind(BaseStore);
+const localDelete=BaseStore.deleteCurrent.bind(BaseStore);
+const localUpdateApp=BaseStore.updateApp.bind(BaseStore);
+const localClearAppHistory=BaseStore.clearAppHistory.bind(BaseStore);
+const localClearAppData=BaseStore.clearAppData.bind(BaseStore);
+const localDisconnectApp=BaseStore.disconnectApp.bind(BaseStore);
+const localReconnectApp=BaseStore.reconnectApp.bind(BaseStore);
 
-Store.create=input=>{createAccount(input);return persistCurrentSession()};
-Store.login=(identifier,password)=>{const raw=identifier.trim(),digits=raw.replace(/\D/g,'').replace(/^91(?=\d{10}$)/,''),normalized=raw.includes('@')?raw.toLowerCase():digits;loginAccount(normalized,password);return persistCurrentSession(['signin','Signed in','A browser signed in to your Indo Account.'])};
-Store.current=()=>{const user=currentAccount();return user?persistCurrentSession():null};
-Store.signout=()=>{const data=read(),user=activeUser(data),sessionId=localStorage.getItem(DEVICE_SESSION_KEY);if(user){user.sessions=(user.sessions||[]).filter(session=>session.id!==sessionId);addEvent(user,'signout','Signed out','This browser signed out of your Indo Account.');write(data)}localStorage.removeItem(ACTIVE_USER_KEY)};
-Store.signoutSession=sessionId=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const session=(user.sessions||[]).find(item=>item.id===sessionId),isCurrent=!!session?.current;user.sessions=user.sessions.filter(item=>item.id!==sessionId);addEvent(user,'session','Device signed out',`${session?.device||'A device'} was signed out.`);write(data);if(isCurrent)localStorage.removeItem(ACTIVE_USER_KEY);return isCurrent};
-Store.removeOthers=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).filter(session=>!session.current).length;user.sessions=user.sessions.filter(session=>session.current);if(removed)addEvent(user,'session','Other devices signed out',`${removed} other ${removed===1?'session was':'sessions were'} ended.`);write(data);return removed};
-Store.signoutAllDevices=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).length;user.sessions=[];addEvent(user,'session','All devices signed out',`${removed} ${removed===1?'session was':'sessions were'} ended.`);write(data);localStorage.removeItem(ACTIVE_USER_KEY);return removed};
-Store.updateNotifications=changes=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const allowed=['signin','account','updates','news'],safe=Object.fromEntries(Object.entries(changes).filter(([key,value])=>allowed.includes(key)&&typeof value==='boolean'));user.notifications={security:true,signin:true,account:true,updates:true,news:false,...user.notifications,...safe};write(data);return JSON.parse(JSON.stringify(user.notifications))};
-Store.exportData=()=>{const user=Store.current();if(!user)throw Error('Please sign in again.');return{export_version:'1.0',exported_at:now(),account:{user_id:user.user_id,indo_id:user.eyemail_id,account_type:user.account_type,account_status:user.account_status,created_at:user.created_at},profile:{full_name:user.full_name,nickname:user.nickname,gender:user.gender,date_of_birth:user.dob,preferred_language:user.language,profile_photo:user.profile_photo||'',recovery_email:user.secondary_email,recovery_email_verified:!!user.secondary_email_verified,mobile_number:user.phone,mobile_number_verified:!!user.phone_verified,addresses:{home:user.home_address,work:user.work_address,other:user.other_address}},apps:JSON.parse(JSON.stringify(user.apps||{})),connections:JSON.parse(JSON.stringify(user.oauth_connections||[])),sessions:JSON.parse(JSON.stringify(user.sessions||[])),security:{two_step:!!user.two_step,events:JSON.parse(JSON.stringify(user.security_events||[]))},notifications:JSON.parse(JSON.stringify(user.notifications||{})),billing:JSON.parse(JSON.stringify(user.billing||{})),invoices:JSON.parse(JSON.stringify(user.invoices||[]))}};
-Store.deleteCurrent=()=>{deleteAccount();localStorage.removeItem(DEVICE_SESSION_KEY)};
+Store.init=()=>{localInit();const current=activeUser(read());if(Api.hasSession())return current||null;if(current?.remote_managed){clearBrowserSession();return null}return localCurrent()};
+Store.create=async input=>mirrorRemote(await Api.signup(input));
+Store.login=async(identifier,password)=>mirrorRemote(await Api.login(identifier,password));
+Store.current=()=>{const current=activeUser(read());if(Api.hasSession())return current||null;if(current?.remote_managed){clearBrowserSession();return null}return localCurrent()};
+Store.refresh=async()=>{if(!Api.hasSession())return Store.current();return mirrorRemote(await Api.me())};
+Store.signout=()=>{if(Api.hasSession())Api.logout().catch(()=>{});clearBrowserSession()};
+Store.update=async changes=>{if(!Api.hasSession())return localUpdate(changes);return mirrorRemote(await Api.update(changes))};
+Store.updateAddress=async(key,value)=>{if(!Api.hasSession())return localUpdateAddress(key,value);const normalized=localUpdateAddress(key,value);return Api.update({[key]:normalized}).then(user=>{mirrorRemote(user);return normalized})};
+Store.setTwoStep=async enabled=>{if(!Api.hasSession())return localSetTwoStep(enabled);mirrorRemote(await Api.setTwoStep(enabled));return!!enabled};
+Store.changePassword=async(currentPassword,value)=>{if(!Api.hasSession())return localChangePassword(currentPassword,value);await Api.changePassword(currentPassword,value);return true};
+Store.updateApp=(key,changes)=>{const result=localUpdateApp(key,changes);if(Api.hasSession())syncRemote().catch(()=>{});return result};
+Store.clearAppHistory=key=>{const result=localClearAppHistory(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
+Store.clearAppData=key=>{const result=localClearAppData(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
+Store.disconnectApp=key=>{const result=localDisconnectApp(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
+Store.reconnectApp=key=>{const result=localReconnectApp(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
+Store.deleteCurrent=async()=>{if(Api.hasSession()){await Api.deleteAccount();clearBrowserSession();return}localDelete();localStorage.removeItem(DEVICE_SESSION_KEY)};
+
+Store.signoutSession=sessionId=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const session=(user.sessions||[]).find(item=>item.session_id===sessionId||item.id===sessionId),isCurrent=!!session?.current;user.sessions=user.sessions.filter(item=>item.session_id!==sessionId&&item.id!==sessionId);addEvent(user,'session','Device signed out',`${session?.device||'A device'} was signed out.`);write(data);if(isCurrent)clearBrowserSession();return isCurrent};
+Store.removeOthers=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).filter(session=>!session.current).length;user.sessions=user.sessions.filter(session=>session.current);write(data);return removed};
+Store.signoutAllDevices=()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const removed=(user.sessions||[]).length;user.sessions=[];write(data);clearBrowserSession();return removed};
+Store.updateNotifications=changes=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const allowed=['signin','account','updates','news'],safe=Object.fromEntries(Object.entries(changes).filter(([key,value])=>allowed.includes(key)&&typeof value==='boolean'));user.notifications={security:true,signin:true,account:true,updates:true,news:false,...user.notifications,...safe};write(data);if(Api.hasSession())syncRemote().catch(()=>{});return clone(user.notifications)};
+Store.exportData=()=>{const user=Store.current();if(!user)throw Error('Please sign in again.');return{export_version:'1.0',exported_at:now(),account:{user_id:user.user_id,indo_id:user.eyemail_id,account_type:user.account_type,account_status:user.account_status,created_at:user.created_at},profile:{full_name:user.full_name,nickname:user.nickname,gender:user.gender,date_of_birth:user.dob,preferred_language:user.language,profile_photo:user.profile_photo||'',recovery_email:user.secondary_email,recovery_email_verified:!!user.secondary_email_verified,mobile_number:user.phone,mobile_number_verified:!!user.phone_verified,addresses:{home:user.home_address,work:user.work_address,other:user.other_address}},apps:clone(user.apps||{}),connections:clone(user.oauth_connections||[]),sessions:clone(user.sessions||[]),security:{two_step:!!user.two_step,events:clone(user.security_events||[])},notifications:clone(user.notifications||{}),billing:clone(user.billing||{}),invoices:clone(user.invoices||[])}};
+
+Store.localCreate=localCreate;
+Store.localLogin=localLogin;
 
 export {Store};

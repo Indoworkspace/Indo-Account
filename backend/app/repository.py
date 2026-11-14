@@ -36,6 +36,11 @@ class DynamoAccountRepository:
         "email": "secondary_email",
         "phone": "phone",
     }
+    APP_DEFAULTS = {
+        "SANKALPA": {"name": "Sankalp", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "memory": [], "preferences": {}}},
+        "EYESEARCH": {"name": "Eyesearch Search Engine", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
+        "EYEBROWSE": {"name": "Eyebrowse Browser", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
+    }
 
     def __init__(self, table: Any, *, session_days: int = 30):
         self.table = table
@@ -100,6 +105,10 @@ class DynamoAccountRepository:
             "account_type": "Personal",
             "account_status": "ACTIVE",
             "two_step": True,
+            "profile_photo": "",
+            "home_address": {},
+            "work_address": {},
+            "other_address": {},
             "created_at": created_at,
             "updated_at": created_at,
         }
@@ -141,7 +150,7 @@ class DynamoAccountRepository:
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))
-        return self._public(profile), token
+        return self.get_account_state(user_id), token
 
     @staticmethod
     def _serializer():
@@ -169,7 +178,7 @@ class DynamoAccountRepository:
         auth = self.table.get_item(Key=self._auth_key(user_id), ConsistentRead=True).get("Item")
         if not auth or not verify_password(password, auth.get("password_hash", "")):
             raise AuthenticationError("Identifier or password is incorrect.")
-        profile = self.get_profile(user_id)
+        profile = self.get_account_state(user_id)
         return profile, self.create_bearer_session(user_id, device)
 
     def create_session(self, user_id: str, device: str) -> str:
@@ -219,6 +228,106 @@ class DynamoAccountRepository:
             raise NotFoundError("Account was not found.")
         return self._public(item)
 
+    def get_account_state(self, user_id: str) -> dict[str, Any]:
+        profile = self.get_profile(user_id)
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}"},
+            ConsistentRead=True,
+        )
+        items = response.get("Items", [])
+        apps = {key: {**value, "key": key} for key, value in self.APP_DEFAULTS.items()}
+        notifications = {"security": True, "signin": True, "account": True, "updates": True, "billing": True, "news": False}
+        billing = {"company": "", "gstin": "", "address": "", "state": ""}
+        sessions: list[dict[str, Any]] = []
+        connections: list[dict[str, Any]] = []
+        invoices: list[dict[str, Any]] = []
+        security_events: list[dict[str, Any]] = []
+        for item in items:
+            sort_key = item.get("SK", "")
+            if sort_key.startswith("APP#") and sort_key.endswith("#STATE"):
+                key = sort_key.split("#")[1]
+                if key in apps:
+                    apps[key] = {**apps[key], **item.get("state", {}), "key": key}
+            elif sort_key == "SETTINGS#NOTIFICATIONS":
+                notifications.update(item.get("state", {}))
+            elif sort_key == "BILLING#PROFILE":
+                billing.update(item.get("state", {}))
+            elif sort_key.startswith("SESSION#"):
+                session = self._public(item)
+                session.pop("token_hash", None)
+                sessions.append(session)
+            elif sort_key.startswith("CONNECTION#"):
+                connections.append(self._public(item))
+            elif sort_key.startswith("INVOICE#"):
+                invoices.append(self._public(item))
+            elif sort_key.startswith("EVENT#"):
+                security_events.append(self._public(item))
+        return {
+            **profile,
+            "apps": apps,
+            "notifications": notifications,
+            "billing": billing,
+            "sessions": sessions,
+            "oauth_connections": connections,
+            "invoices": invoices,
+            "security_events": security_events,
+        }
+
+    def sync_account_state(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        partition = f"USER#{user_id}"
+        for key, state in (payload.get("apps") or {}).items():
+            if key not in self.APP_DEFAULTS or not isinstance(state, dict):
+                continue
+            clean = {field: state[field] for field in ("name", "status", "connected", "plan", "quota", "renewal", "last_used", "data") if field in state}
+            self.table.put_item(Item={"PK": partition, "SK": f"APP#{key}#STATE", "entity_type": "APP_STATE", "state": clean, "updated_at": utc_now()})
+        if isinstance(payload.get("notifications"), dict):
+            allowed = {"security", "signin", "account", "updates", "billing", "news"}
+            clean = {key: bool(value) for key, value in payload["notifications"].items() if key in allowed}
+            self.table.put_item(Item={"PK": partition, "SK": "SETTINGS#NOTIFICATIONS", "entity_type": "NOTIFICATION_SETTINGS", "state": clean, "updated_at": utc_now()})
+        if isinstance(payload.get("billing"), dict):
+            allowed = {"company", "gstin", "address", "state"}
+            clean = {key: str(value)[:500] for key, value in payload["billing"].items() if key in allowed}
+            self.table.put_item(Item={"PK": partition, "SK": "BILLING#PROFILE", "entity_type": "BILLING_PROFILE", "state": clean, "updated_at": utc_now()})
+        return self.get_account_state(user_id)
+
+    def set_two_step(self, user_id: str, enabled: bool) -> dict[str, Any]:
+        self.table.update_item(
+            Key=self._profile_key(user_id),
+            UpdateExpression="SET two_step = :enabled, updated_at = :updated",
+            ExpressionAttributeValues={":enabled": enabled, ":updated": utc_now()},
+            ConditionExpression="attribute_exists(PK)",
+        )
+        return self.get_account_state(user_id)
+
+    def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+        auth = self.table.get_item(Key=self._auth_key(user_id), ConsistentRead=True).get("Item")
+        if not auth or not verify_password(current_password, auth.get("password_hash", "")):
+            raise AuthenticationError("Current password is incorrect.")
+        if verify_password(new_password, auth["password_hash"]):
+            raise ConflictError("Choose a password you have not used for this account.")
+        self.table.update_item(
+            Key=self._auth_key(user_id),
+            UpdateExpression="SET password_hash = :password, updated_at = :updated",
+            ExpressionAttributeValues={":password": hash_password(new_password), ":updated": utc_now()},
+            ConditionExpression="attribute_exists(PK)",
+        )
+
+    def revoke_token(self, token: str) -> None:
+        try:
+            user_id, opaque = token.split(".", 1)
+        except ValueError:
+            return
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": "SESSION#"},
+            ConsistentRead=True,
+        )
+        digest = token_digest(opaque)
+        session = next((item for item in response.get("Items", []) if item.get("token_hash") == digest), None)
+        if session:
+            self.table.delete_item(Key={"PK": session["PK"], "SK": session["SK"]})
+
     def update_profile(self, user_id: str, changes: dict[str, Any]) -> dict[str, Any]:
         allowed = {
             "full_name",
@@ -233,7 +342,7 @@ class DynamoAccountRepository:
         }
         clean = {key: value for key, value in changes.items() if key in allowed}
         if not clean:
-            return self.get_profile(user_id)
+            return self.get_account_state(user_id)
         clean["updated_at"] = utc_now()
         names = {f"#{key}": key for key in clean}
         values = {f":{key}": value for key, value in clean.items()}
@@ -246,7 +355,7 @@ class DynamoAccountRepository:
             ConditionExpression="attribute_exists(PK)",
             ReturnValues="ALL_NEW",
         )
-        return self._public(result["Attributes"])
+        return self.get_account_state(user_id)
 
     def delete_account(self, user_id: str) -> None:
         partition = f"USER#{user_id}"

@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261114-1600';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261114-2200';
 
 const u=user();
 const iconFiles={
@@ -96,7 +96,7 @@ function renderAddressEditor(key,button){
   button.insertAdjacentElement('afterend',editor);
   const value=id=>editor.querySelector(id).value.trim(),note=editor.querySelector('.editor-note');
   editor.querySelector('[data-close]').onclick=clearEditor;
-  editor.querySelector('#save-address').onclick=()=>{const address={line1:value('#address-line1'),line2:value('#address-line2'),city:value('#address-city'),state:value('#address-state'),postal_code:value('#address-postal').toUpperCase(),country:value('#address-country')};try{const saved=Store.updateAddress(key,address);u[key]=saved;button.querySelector('small').textContent=addressSummary(saved,`Add ${label}`);clearEditor();toast(`${label} saved.`)}catch(error){note.textContent=error.message;note.style.color='#bc1d1d'}};
+  editor.querySelector('#save-address').onclick=async()=>{const address={line1:value('#address-line1'),line2:value('#address-line2'),city:value('#address-city'),state:value('#address-state'),postal_code:value('#address-postal').toUpperCase(),country:value('#address-country')};try{const saved=await Store.updateAddress(key,address);u[key]=saved;button.querySelector('small').textContent=addressSummary(saved,`Add ${label}`);clearEditor();toast(`${label} saved.`)}catch(error){note.textContent=error.message;note.style.color='#bc1d1d'}};
   editor.querySelector('#address-line1').focus();
 }
 
@@ -138,7 +138,7 @@ function renderPhotoEditor(button){
   fileInput.onchange=async()=>{const[file]=fileInput.files;if(!file)return;try{draft=await preparePhoto(file);photoPreview.innerHTML=preview();remove.hidden=false}catch(error){fileInput.value='';toast(error.message)}};
   remove.onclick=()=>{draft='';photoPreview.innerHTML=preview();remove.hidden=true;fileInput.value=''};
   editor.querySelector('[data-close]').onclick=clearEditor;
-  editor.querySelector('#save-editor').onclick=()=>{Store.update({profile_photo:draft});u.profile_photo=draft;button.querySelector('small').textContent=draft?'Photo added':'Add a profile picture';button.querySelector('.row-action').textContent=draft?'Change':'Add';syncAvatar();clearEditor();toast(draft?'Profile picture saved.':'Profile picture removed.')};
+  editor.querySelector('#save-editor').onclick=async()=>{try{await Store.update({profile_photo:draft});u.profile_photo=draft;button.querySelector('small').textContent=draft?'Photo added':'Add a profile picture';button.querySelector('.row-action').textContent=draft?'Change':'Add';syncAvatar();clearEditor();toast(draft?'Profile picture saved.':'Profile picture removed.')}catch(error){toast(error.message)}};
 }
 
 function renderEditor(key,button){
@@ -158,6 +158,6 @@ function renderEditor(key,button){
   button.insertAdjacentElement('afterend',editor);
   const field=editor.querySelector('#edit-value');if(key==='language')field.value=u.language||'kn';if(key==='gender')field.value=u.gender||'';
   editor.querySelectorAll('[data-close]').forEach(close=>close.onclick=clearEditor);
-  editor.querySelector('#save-editor').onclick=()=>{const next=field.value.trim();if(!next&&key!=='gender')return toast(`Enter your ${label.toLowerCase()}.`);if(key==='full_name'&&(next.length<2||next.length>80||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid full name (2–80 characters).');if(key==='nickname'&&(next.length<2||next.length>30||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid nickname (2–30 characters).');if(key==='dob'){const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-13);const maxDate=`${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;if(next<'1900-01-01'||next>maxDate)return toast('Enter a valid birthday. You must be at least 13 years old.')}Store.update({[key]:next});u[key]=next;const displayed=key==='language'?(readable[next]||next):(next||'Not set');button.querySelector('small').textContent=displayed;if(key==='full_name'){document.querySelector('.profile-main h1').textContent=next;syncAvatar()}clearEditor();toast(`${label} saved.`)};
+  editor.querySelector('#save-editor').onclick=async()=>{const next=field.value.trim();if(!next&&key!=='gender')return toast(`Enter your ${label.toLowerCase()}.`);if(key==='full_name'&&(next.length<2||next.length>80||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid full name (2–80 characters).');if(key==='nickname'&&(next.length<2||next.length>30||!/^\p{L}[\p{L}\p{M} .'’-]*$/u.test(next)))return toast('Enter a valid nickname (2–30 characters).');if(key==='dob'){const cutoff=new Date();cutoff.setFullYear(cutoff.getFullYear()-13);const maxDate=`${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-${String(cutoff.getDate()).padStart(2,'0')}`;if(next<'1900-01-01'||next>maxDate)return toast('Enter a valid birthday. You must be at least 13 years old.')}try{await Store.update({[key]:next});u[key]=next;const displayed=key==='language'?(readable[next]||next):(next||'Not set');button.querySelector('small').textContent=displayed;if(key==='full_name'){document.querySelector('.profile-main h1').textContent=next;syncAvatar()}clearEditor();toast(`${label} saved.`)}catch(error){toast(error.message)}};
 }
 document.querySelectorAll('.info-row[data-key]').forEach(button=>button.onclick=()=>renderEditor(button.dataset.key,button));

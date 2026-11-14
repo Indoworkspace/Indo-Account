@@ -1,4 +1,4 @@
-import {setup,user,Store,$,toast,esc,modal} from '../shared/layout.js?v=20261114-1600';
+import {setup,user,Store,$,toast,esc,modal} from '../shared/layout.js?v=20261114-2200';
 
 const u=user();
 const icon={
@@ -41,7 +41,7 @@ inlineStyle.textContent=`
 document.head.append(inlineStyle);
 
 const twoStep=$('#two-step'),twoStepDetail=$('#two-step-detail');
-function applyTwoStep(enabled){Store.setTwoStep(enabled);u.two_step=enabled;twoStep.checked=enabled;twoStepDetail.textContent=enabled?'On — OTP is required for sensitive actions.':'Off — turn it on for stronger protection.';toast(`Two-step protection turned ${enabled?'on':'off'}.`)}
+async function applyTwoStep(enabled){try{await Store.setTwoStep(enabled);u.two_step=enabled;twoStep.checked=enabled;twoStepDetail.textContent=enabled?'On — OTP is required for sensitive actions.':'Off — turn it on for stronger protection.';toast(`Two-step protection turned ${enabled?'on':'off'}.`)}catch(error){twoStep.checked=!enabled;toast(error.message)}}
 twoStep.onchange=e=>{if(e.target.checked)return applyTwoStep(true);e.target.checked=true;modal('Turn off two-step protection','<p>Sensitive account changes will no longer require a secondary email OTP.</p>',()=>applyTwoStep(false),true)};
 function openPassword(button){
   document.querySelector('.inline-password')?.remove();
@@ -54,7 +54,7 @@ function openPassword(button){
   const rules={length:value=>value.length>=8&&value.length<=64,upper:value=>/[A-Z]/.test(value),lower:value=>/[a-z]/.test(value),number:value=>/\d/.test(value),symbol:value=>/[^A-Za-z0-9]/.test(value),match:value=>!!value&&value===confirm.value};
   const updateRules=()=>{Object.entries(rules).forEach(([name,test])=>form.querySelector(`[data-rule="${name}"]`).classList.toggle('met',test(next.value)));error.textContent=''};
   next.oninput=updateRules;confirm.oninput=updateRules;
-  form.onsubmit=e=>{e.preventDefault();updateRules();if(!Object.values(rules).every(test=>test(next.value))){error.textContent='Complete all password requirements.';return}try{Store.changePassword(current.value,next.value);button.querySelector('small').textContent='Last changed just now.';form.remove();toast('Password updated securely.')}catch(reason){error.textContent=reason.message}};
+  form.onsubmit=async e=>{e.preventDefault();updateRules();if(!Object.values(rules).every(test=>test(next.value))){error.textContent='Complete all password requirements.';return}try{await Store.changePassword(current.value,next.value);button.querySelector('small').textContent='Last changed just now.';form.remove();toast('Password updated securely.')}catch(reason){error.textContent=reason.message}};
   current.focus();
 }
 document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{const action=button.dataset.action;if(action==='password'){openPassword(button);return}location.href=action==='personal'?'../personal-info/index.html':action==='devices'?'../devices/index.html':'../apps-data/index.html'});

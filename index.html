@@ -14,7 +14,8 @@
       let signedIn=false;
       try{
         const userId=localStorage.getItem(sessionKey),database=JSON.parse(localStorage.getItem(databaseKey)||'{"users":[]}');
-        signedIn=Boolean(userId&&Array.isArray(database.users)&&database.users.some(user=>user.user_id===userId));
+        const user=Array.isArray(database.users)&&database.users.find(item=>item.user_id===userId),apiToken=sessionStorage.getItem('indo_api_session_token');
+        signedIn=Boolean(user&&(!user.remote_managed||apiToken));
         if(userId&&!signedIn)localStorage.removeItem(sessionKey);
       }catch{
         localStorage.removeItem(sessionKey);

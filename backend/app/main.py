@@ -60,6 +60,29 @@ class ProfileUpdate(BaseModel):
     other_address: dict[str, str] | None = None
 
 
+class AccountStateSync(BaseModel):
+    apps: dict[str, dict[str, Any]] | None = None
+    notifications: dict[str, bool] | None = None
+    billing: dict[str, Any] | None = None
+
+
+class TwoStepUpdate(BaseModel):
+    enabled: bool
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=64)
+    new_password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("new_password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        tests = (any(c.islower() for c in value), any(c.isupper() for c in value), any(c.isdigit() for c in value), any(not c.isalnum() for c in value))
+        if not all(tests):
+            raise ValueError("Password must include uppercase, lowercase, number, and symbol.")
+        return value
+
+
 def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in is required.")
@@ -100,10 +123,16 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
 
 
+@app.post("/api/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def logout(token: Annotated[str, Depends(bearer_token)]) -> Response:
+    repository.revoke_token(token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/api/v1/me")
 def me(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     try:
-        return repository.get_profile(user_id)
+        return repository.get_account_state(user_id)
     except NotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
@@ -111,6 +140,25 @@ def me(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
 @app.patch("/api/v1/me")
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     return repository.update_profile(user_id, payload.model_dump(exclude_none=True))
+
+
+@app.patch("/api/v1/me/state")
+def sync_me(payload: AccountStateSync, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.sync_account_state(user_id, payload.model_dump(exclude_none=True))
+
+
+@app.patch("/api/v1/me/two-step")
+def update_two_step(payload: TwoStepUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.set_two_step(user_id, payload.enabled)
+
+
+@app.post("/api/v1/me/password", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(current_user)]) -> Response:
+    try:
+        repository.change_password(user_id, payload.current_password, payload.new_password)
+    except AuthenticationError as error:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.delete(
