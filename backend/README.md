@@ -27,6 +27,9 @@ sam deploy \
   --no-confirm-changeset
 ```
 
+The template uses the Python 3.13 Lambda runtime so it builds directly in the
+current AWS CloudShell environment.
+
 Use the `ApiUrl` output as the frontend API base URL. Do not commit AWS access
 keys, session credentials, or SMTP secrets.
 
