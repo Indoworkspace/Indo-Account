@@ -125,7 +125,6 @@ class DynamoAccountRepository:
         # Conditional writes protect each unique lookup. The transaction keeps
         # the profile, auth record and all lookup records atomic.
         client = self.table.meta.client
-        serializer = self._serializer()
         puts = [profile, auth]
         puts.extend(
             {
@@ -142,7 +141,11 @@ class DynamoAccountRepository:
                     {
                         "Put": {
                             "TableName": self.table.name,
-                            "Item": serializer(item),
+                            # The client attached to a DynamoDB resource has
+                            # the document serializer registered already.
+                            # Passing AttributeValue wrappers here would
+                            # double-serialize PK/SK as maps.
+                            "Item": item,
                             "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
                         }
                     }
@@ -168,20 +171,6 @@ class DynamoAccountRepository:
 
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))
         return self.get_account_state(user_id), token
-
-    @staticmethod
-    def _serializer():
-        from boto3.dynamodb.types import TypeSerializer
-
-        serializer = TypeSerializer()
-
-        def serialize_item(item: dict[str, Any]) -> dict[str, dict[str, Any]]:
-            # TypeSerializer returns a top-level {"M": {...}} for a Python
-            # mapping. TransactWriteItems expects the inner attribute-value
-            # mapping as its Item payload.
-            return serializer.serialize(item)["M"]
-
-        return serialize_item
 
     def find_user_id(self, identifier: str) -> str | None:
         value = identifier.strip().lower()
