@@ -1,4 +1,4 @@
-import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261114-0200';
+import {setup,Store,$,modal,download,toast} from '../shared/layout.js?v=20261114-0600';
 
 const icon={
   export:'<path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',

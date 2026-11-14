@@ -1,4 +1,4 @@
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261114-0200';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261114-0600';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',

@@ -1,4 +1,4 @@
-import {Store} from '../shared/store.js';
+import {Store} from '../shared/session-store.js?v=20261114-0600';
 Store.init();
 const $=s=>document.querySelector(s),form=$('#signup-form');let otp='',sentEmail='';
 const reserved=['admin','support','noreply','verify','security','indo','eyesearch','sankalpa','portal','help','billing'];
