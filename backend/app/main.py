@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated, Any
 
 import boto3
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -113,9 +113,14 @@ def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_us
     return repository.update_profile(user_id, payload.model_dump(exclude_none=True))
 
 
-@app.delete("/api/v1/me", status_code=204)
-def delete_me(user_id: Annotated[str, Depends(current_user)]) -> None:
+@app.delete(
+    "/api/v1/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_me(user_id: Annotated[str, Depends(current_user)]) -> Response:
     repository.delete_account(user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 handler = Mangum(app, lifespan="off")
