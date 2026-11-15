@@ -45,8 +45,10 @@ export const Api={
   requestRecoveryEmailOtp:email=>request('/api/v1/me/recovery-email/request',{method:'POST',body:{email}}),
   verifyRecoveryEmailOtp:(email,code)=>request('/api/v1/me/recovery-email/verify',{method:'POST',body:{email,code}}),
   sync:state=>request('/api/v1/me/state',{method:'PATCH',body:state}),
-  setTwoStep:enabled=>request('/api/v1/me/two-step',{method:'PATCH',body:{enabled}}),
-  changePassword:(currentPassword,newPassword)=>request('/api/v1/me/password',{method:'POST',body:{current_password:currentPassword,new_password:newPassword}}),
+  requestSecurityOtp:action=>request('/api/v1/me/security-otp/request',{method:'POST',body:{action}}),
+  verifySecurityOtp:(action,code)=>request('/api/v1/me/security-otp/verify',{method:'POST',body:{action,code}}),
+  setTwoStep:(enabled,verificationToken='')=>request('/api/v1/me/two-step',{method:'PATCH',body:{enabled,...(verificationToken?{verification_token:verificationToken}:{})}}),
+  changePassword:(currentPassword,newPassword,verificationToken='')=>request('/api/v1/me/password',{method:'POST',body:{current_password:currentPassword,new_password:newPassword,...(verificationToken?{verification_token:verificationToken}:{})}}),
   signoutSession:sessionId=>request(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}`,{method:'DELETE'}),
   signoutSessions:includeCurrent=>request(`/api/v1/me/sessions?include_current=${includeCurrent?'true':'false'}`,{method:'DELETE'}),
   deleteAccount:()=>request('/api/v1/me',{method:'DELETE'})

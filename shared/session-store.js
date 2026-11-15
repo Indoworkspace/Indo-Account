@@ -1,5 +1,5 @@
 import {Store as BaseStore} from './store.js?v=20261114-0800';
-import {Api} from './api-client.js?v=20261115-auth1';
+import {Api} from './api-client.js?v=20261115-security1';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
@@ -46,8 +46,10 @@ Store.update=async changes=>{if(!Api.hasSession())return localUpdate(changes);re
 Store.requestRecoveryEmailOtp=email=>Api.requestRecoveryEmailOtp(email);
 Store.verifyRecoveryEmailOtp=async(email,code)=>mirrorRemote(await Api.verifyRecoveryEmailOtp(email,code));
 Store.updateAddress=async(key,value)=>{if(!Api.hasSession())return localUpdateAddress(key,value);const normalized=localUpdateAddress(key,value);return Api.update({[key]:normalized}).then(user=>{mirrorRemote(user);return normalized})};
-Store.setTwoStep=async enabled=>{if(!Api.hasSession())return localSetTwoStep(enabled);mirrorRemote(await Api.setTwoStep(enabled));return!!enabled};
-Store.changePassword=async(currentPassword,value)=>{if(!Api.hasSession())return localChangePassword(currentPassword,value);await Api.changePassword(currentPassword,value);return true};
+Store.requestSecurityOtp=action=>Api.requestSecurityOtp(action);
+Store.verifySecurityOtp=(action,code)=>Api.verifySecurityOtp(action,code);
+Store.setTwoStep=async(enabled,verificationToken='')=>{if(!Api.hasSession())return localSetTwoStep(enabled);mirrorRemote(await Api.setTwoStep(enabled,verificationToken));return!!enabled};
+Store.changePassword=async(currentPassword,value,verificationToken='')=>{if(!Api.hasSession())return localChangePassword(currentPassword,value);await Api.changePassword(currentPassword,value,verificationToken);return true};
 Store.updateApp=(key,changes)=>{const result=localUpdateApp(key,changes);if(Api.hasSession())syncRemote().catch(()=>{});return result};
 Store.clearAppHistory=key=>{const result=localClearAppHistory(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
 Store.clearAppData=key=>{const result=localClearAppData(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
