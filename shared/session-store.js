@@ -1,5 +1,5 @@
 import {Store as BaseStore} from './store.js?v=20261114-0800';
-import {Api} from './api-client.js?v=20261115-security1';
+import {Api} from './api-client.js?v=20261115-delete1';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
@@ -55,7 +55,7 @@ Store.clearAppHistory=key=>{const result=localClearAppHistory(key);if(Api.hasSes
 Store.clearAppData=key=>{const result=localClearAppData(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
 Store.disconnectApp=key=>{const result=localDisconnectApp(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
 Store.reconnectApp=key=>{const result=localReconnectApp(key);if(Api.hasSession())syncRemote().catch(()=>{});return result};
-Store.deleteCurrent=async()=>{if(Api.hasSession()){await Api.deleteAccount();clearBrowserSession();return}localDelete();localStorage.removeItem(DEVICE_SESSION_KEY)};
+Store.deleteCurrent=async(verificationToken='')=>{if(Api.hasSession()){await Api.deleteAccount(verificationToken);clearBrowserSession();return}localDelete();localStorage.removeItem(DEVICE_SESSION_KEY)};
 
 Store.signoutSession=async sessionId=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');const session=(user.sessions||[]).find(item=>item.session_id===sessionId||item.id===sessionId),isCurrent=!!session?.current;if(Api.hasSession())await Api.signoutSession(sessionId);user.sessions=user.sessions.filter(item=>item.session_id!==sessionId&&item.id!==sessionId);addEvent(user,'session','Device signed out',`${session?.device||'A device'} was signed out.`);write(data);if(isCurrent)clearBrowserSession();return isCurrent};
 Store.removeOthers=async()=>{const data=read(),user=activeUser(data);if(!user)throw Error('Please sign in again.');if(Api.hasSession()){const result=await Api.signoutSessions(false);mirrorRemote(await Api.me());return result.removed}const removed=(user.sessions||[]).filter(session=>!session.current).length;user.sessions=user.sessions.filter(session=>session.current);write(data);return removed};
