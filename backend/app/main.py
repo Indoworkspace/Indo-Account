@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
@@ -36,7 +36,7 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.5.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.6.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -127,11 +127,13 @@ class AccountStateSync(BaseModel):
 
 class TwoStepUpdate(BaseModel):
     enabled: bool
+    verification_token: str | None = Field(default=None, min_length=32, max_length=512)
 
 
 class PasswordChange(BaseModel):
     current_password: str = Field(min_length=1, max_length=64)
     new_password: str = Field(min_length=8, max_length=64)
+    verification_token: str | None = Field(default=None, min_length=32, max_length=512)
 
     @field_validator("new_password")
     @classmethod
@@ -140,6 +142,24 @@ class PasswordChange(BaseModel):
         if not all(tests):
             raise ValueError("Password must include uppercase, lowercase, number, and symbol.")
         return value
+
+
+SecurityAction = Literal["change_password", "disable_two_step"]
+
+
+class SecurityOtpRequest(BaseModel):
+    action: SecurityAction
+
+
+class SecurityOtpVerify(BaseModel):
+    action: SecurityAction
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+SECURITY_ACTION_LABELS = {
+    "change_password": "changing your password",
+    "disable_two_step": "turning off two-step protection",
+}
 
 
 def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
@@ -159,6 +179,12 @@ def current_user(token: Annotated[str, Depends(bearer_token)]) -> str:
 async def conflict_handler(_request, error: ConflictError):
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=409, content={"detail": str(error)})
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_handler(_request, error: NotFoundError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=404, content={"detail": str(error)})
 
 
 @app.exception_handler(OtpRateLimitError)
@@ -394,6 +420,66 @@ def verify_recovery_email_otp(
     return repository.verify_recovery_email_otp(user_id, email, code_hash)
 
 
+@app.post("/api/v1/me/security-otp/request", status_code=202)
+def request_security_otp(
+    payload: SecurityOtpRequest,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    email = repository.security_otp_target(user_id)
+    code = new_otp_code()
+    code_hash = challenge_digest(
+        "security_action",
+        f"{user_id}:{payload.action}",
+        code,
+        settings.otp_hash_secret,
+    )
+    now = int(time.time())
+    repository.store_security_otp(
+        user_id,
+        payload.action,
+        email,
+        code_hash,
+        expires_at=now + settings.otp_ttl_seconds,
+        resend_after=now + settings.otp_resend_seconds,
+    )
+    try:
+        email_sender.send_security_action_otp(
+            email,
+            code,
+            SECURITY_ACTION_LABELS[payload.action],
+        )
+    except (EmailConfigurationError, EmailDeliveryError):
+        repository.discard_security_otp(user_id, payload.action, code_hash)
+        raise
+    return {
+        "message": "Security verification code sent.",
+        "expires_in": settings.otp_ttl_seconds,
+        "resend_after": settings.otp_resend_seconds,
+    }
+
+
+@app.post("/api/v1/me/security-otp/verify")
+def verify_security_otp(
+    payload: SecurityOtpVerify,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    code_hash = challenge_digest(
+        "security_action",
+        f"{user_id}:{payload.action}",
+        payload.code,
+        settings.otp_hash_secret,
+    )
+    verification_token = repository.verify_security_otp(user_id, payload.action, code_hash)
+    return {
+        "verification_token": verification_token,
+        "expires_in": settings.otp_verification_seconds,
+    }
+
+
 @app.patch("/api/v1/me/state")
 def sync_me(payload: AccountStateSync, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     return repository.sync_account_state(user_id, payload.model_dump(exclude_none=True))
@@ -401,13 +487,24 @@ def sync_me(payload: AccountStateSync, user_id: Annotated[str, Depends(current_u
 
 @app.patch("/api/v1/me/two-step")
 def update_two_step(payload: TwoStepUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.set_two_step(user_id, payload.enabled)
+    return repository.set_two_step(
+        user_id,
+        payload.enabled,
+        verification_token=payload.verification_token,
+        require_verification=settings.require_sensitive_action_otp,
+    )
 
 
 @app.post("/api/v1/me/password", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(current_user)]) -> Response:
     try:
-        repository.change_password(user_id, payload.current_password, payload.new_password)
+        repository.change_password(
+            user_id,
+            payload.current_password,
+            payload.new_password,
+            verification_token=payload.verification_token,
+            require_verification=settings.require_sensitive_action_otp,
+        )
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

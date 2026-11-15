@@ -103,6 +103,17 @@ class DynamoAccountRepository:
         return {"PK": f"OTP#RECOVERY_EMAIL#{token_digest(user_id)}", "SK": "CHALLENGE"}
 
     @staticmethod
+    def _security_otp_key(user_id: str, action: str) -> dict[str, str]:
+        return {
+            "PK": f"OTP#SECURITY#{token_digest(f'{user_id}:{action}')}",
+            "SK": "CHALLENGE",
+        }
+
+    @staticmethod
+    def _security_verification_key(token: str) -> dict[str, str]:
+        return {"PK": f"VERIFY#SECURITY#{token_digest(token)}", "SK": "ACTION"}
+
+    @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in item.items() if key not in {"PK", "SK", "password_hash"}}
 
@@ -316,6 +327,148 @@ class DynamoAccountRepository:
                 raise ConflictError("This recovery email is already registered.") from error
             raise OtpError("Recovery email could not be updated. Request a new code.") from error
         return self.get_account_state(user_id)
+
+    def security_otp_target(self, user_id: str) -> str:
+        profile = self.table.get_item(
+            Key=self._profile_key(user_id),
+            ConsistentRead=True,
+        ).get("Item")
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        email = str(profile.get("secondary_email", "")).strip().lower()
+        if not email or not profile.get("secondary_email_verified"):
+            raise OtpError("Verify a recovery email before using two-step protection.")
+        return email
+
+    def store_security_otp(
+        self,
+        user_id: str,
+        action: str,
+        email: str,
+        code_hash: str,
+        *,
+        expires_at: int,
+        resend_after: int,
+    ) -> None:
+        now = int(time.time())
+        key = self._security_otp_key(user_id, action)
+        try:
+            self.table.put_item(
+                Item={
+                    **key,
+                    "entity_type": "SECURITY_ACTION_OTP",
+                    "user_id": user_id,
+                    "action": action,
+                    "email": email,
+                    "code_hash": code_hash,
+                    "attempts": 0,
+                    "expires_at": expires_at,
+                    "resend_after": resend_after,
+                    "ttl": expires_at,
+                    "created_at": utc_now(),
+                },
+                ConditionExpression="attribute_not_exists(PK) OR #resend <= :now",
+                ExpressionAttributeNames={"#resend": "resend_after"},
+                ExpressionAttributeValues={":now": now},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            existing = self.table.get_item(Key=key, ConsistentRead=True).get("Item", {})
+            retry_after = int(existing.get("resend_after", now + 1)) - now
+            raise OtpRateLimitError(retry_after) from error
+
+    def discard_security_otp(self, user_id: str, action: str, code_hash: str) -> None:
+        try:
+            self.table.delete_item(
+                Key=self._security_otp_key(user_id, action),
+                ConditionExpression="code_hash = :code_hash",
+                ExpressionAttributeValues={":code_hash": code_hash},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            pass
+
+    def verify_security_otp(self, user_id: str, action: str, code_hash: str) -> str:
+        challenge_key = self._security_otp_key(user_id, action)
+        challenge = self.table.get_item(Key=challenge_key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if (
+            not challenge
+            or challenge.get("user_id") != user_id
+            or challenge.get("action") != action
+            or int(challenge.get("expires_at", 0)) <= now
+        ):
+            if challenge:
+                self.table.delete_item(Key=challenge_key)
+            raise OtpError("This verification code has expired. Request a new code.")
+
+        attempts = int(challenge.get("attempts", 0))
+        if attempts >= self.otp_max_attempts:
+            self.table.delete_item(Key=challenge_key)
+            raise OtpError("Too many incorrect attempts. Request a new code.")
+        if not hmac.compare_digest(str(challenge.get("code_hash", "")), code_hash):
+            attempts += 1
+            if attempts >= self.otp_max_attempts:
+                self.table.delete_item(Key=challenge_key)
+                raise OtpError("Too many incorrect attempts. Request a new code.")
+            self.table.update_item(
+                Key=challenge_key,
+                UpdateExpression="SET attempts = :attempts",
+                ExpressionAttributeValues={":attempts": attempts},
+                ConditionExpression="attribute_exists(PK)",
+            )
+            remaining = self.otp_max_attempts - attempts
+            raise OtpError(f"The verification code is incorrect. {remaining} attempts remaining.")
+
+        verification_token = new_verification_token()
+        verification_key = self._security_verification_key(verification_token)
+        verification_expires = now + self.otp_verification_seconds
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Put": {
+                            "TableName": self.table.name,
+                            "Item": {
+                                **verification_key,
+                                "entity_type": "SECURITY_ACTION_VERIFICATION",
+                                "user_id": user_id,
+                                "action": action,
+                                "expires_at": verification_expires,
+                                "ttl": verification_expires,
+                                "created_at": utc_now(),
+                            },
+                            "ConditionExpression": "attribute_not_exists(PK)",
+                        }
+                    },
+                    {
+                        "Delete": {
+                            "TableName": self.table.name,
+                            "Key": challenge_key,
+                            "ConditionExpression": "code_hash = :code_hash",
+                            "ExpressionAttributeValues": {":code_hash": code_hash},
+                        }
+                    },
+                ]
+            )
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Security verification could not be completed. Request a new code.") from error
+        return verification_token
+
+    def validated_security_verification(self, user_id: str, action: str, token: str) -> dict[str, str]:
+        if not token:
+            raise OtpError("Verify this security change using the code sent to your recovery email.")
+        key = self._security_verification_key(token)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+        if (
+            not item
+            or item.get("user_id") != user_id
+            or item.get("action") != action
+            or int(item.get("expires_at", 0)) <= int(time.time())
+        ):
+            if item and int(item.get("expires_at", 0)) <= int(time.time()):
+                self.table.delete_item(Key=key)
+            raise OtpError("Security verification expired. Request a new code.")
+        return key
 
     def store_signup_otp(
         self,
@@ -948,27 +1101,164 @@ class DynamoAccountRepository:
             self.table.put_item(Item={"PK": partition, "SK": "BILLING#PROFILE", "entity_type": "BILLING_PROFILE", "state": clean, "updated_at": utc_now()})
         return self.get_account_state(user_id)
 
-    def set_two_step(self, user_id: str, enabled: bool) -> dict[str, Any]:
-        self.table.update_item(
-            Key=self._profile_key(user_id),
-            UpdateExpression="SET two_step = :enabled, updated_at = :updated",
-            ExpressionAttributeValues={":enabled": enabled, ":updated": utc_now()},
-            ConditionExpression="attribute_exists(PK)",
-        )
+    def set_two_step(
+        self,
+        user_id: str,
+        enabled: bool,
+        *,
+        verification_token: str | None = None,
+        require_verification: bool = False,
+    ) -> dict[str, Any]:
+        profile = self.table.get_item(Key=self._profile_key(user_id), ConsistentRead=True).get("Item")
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        current = bool(profile.get("two_step"))
+        if current == enabled:
+            return self.get_account_state(user_id)
+        verification_key = None
+        if current and not enabled and (require_verification or verification_token):
+            verification_key = self.validated_security_verification(
+                user_id,
+                "disable_two_step",
+                verification_token or "",
+            )
+        updated_at = utc_now()
+        event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        actions: list[dict[str, Any]] = [
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": self._profile_key(user_id),
+                    "UpdateExpression": "SET two_step = :enabled, updated_at = :updated",
+                    "ConditionExpression": "attribute_exists(PK) AND two_step = :current",
+                    "ExpressionAttributeValues": {
+                        ":enabled": enabled,
+                        ":updated": updated_at,
+                        ":current": current,
+                    },
+                }
+            },
+            {
+                "Put": {
+                    "TableName": self.table.name,
+                    "Item": {
+                        **event_key,
+                        "entity_type": "SECURITY_EVENT",
+                        "id": event_key["SK"].removeprefix("EVENT#"),
+                        "type": "two_step",
+                        "title": f"Two-step protection {'enabled' if enabled else 'disabled'}",
+                        "detail": f"Recovery email OTP protection was turned {'on' if enabled else 'off'}.",
+                        "created_at": updated_at,
+                    },
+                    "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                }
+            },
+        ]
+        if verification_key:
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": self.table.name,
+                        "Key": verification_key,
+                        "ConditionExpression": "user_id = :user_id AND #action = :action AND expires_at > :now",
+                        "ExpressionAttributeNames": {"#action": "action"},
+                        "ExpressionAttributeValues": {
+                            ":user_id": user_id,
+                            ":action": "disable_two_step",
+                            ":now": int(time.time()),
+                        },
+                    }
+                }
+            )
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Two-step protection could not be updated. Verify again.") from error
         return self.get_account_state(user_id)
 
-    def change_password(self, user_id: str, current_password: str, new_password: str) -> None:
+    def change_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+        *,
+        verification_token: str | None = None,
+        require_verification: bool = False,
+    ) -> None:
         auth = self.table.get_item(Key=self._auth_key(user_id), ConsistentRead=True).get("Item")
         if not auth or not verify_password(current_password, auth.get("password_hash", "")):
             raise AuthenticationError("Current password is incorrect.")
         if verify_password(new_password, auth["password_hash"]):
             raise ConflictError("Choose a password you have not used for this account.")
-        self.table.update_item(
-            Key=self._auth_key(user_id),
-            UpdateExpression="SET password_hash = :password, updated_at = :updated",
-            ExpressionAttributeValues={":password": hash_password(new_password), ":updated": utc_now()},
-            ConditionExpression="attribute_exists(PK)",
-        )
+        profile = self.table.get_item(Key=self._profile_key(user_id), ConsistentRead=True).get("Item")
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        verification_key = None
+        if profile.get("two_step") and (require_verification or verification_token):
+            verification_key = self.validated_security_verification(
+                user_id,
+                "change_password",
+                verification_token or "",
+            )
+        updated_at = utc_now()
+        event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        actions: list[dict[str, Any]] = [
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": self._auth_key(user_id),
+                    "UpdateExpression": "SET password_hash = :password, updated_at = :updated",
+                    "ExpressionAttributeValues": {
+                        ":password": hash_password(new_password),
+                        ":updated": updated_at,
+                    },
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            },
+            {
+                "Put": {
+                    "TableName": self.table.name,
+                    "Item": {
+                        **event_key,
+                        "entity_type": "SECURITY_EVENT",
+                        "id": event_key["SK"].removeprefix("EVENT#"),
+                        "type": "password",
+                        "title": "Password changed",
+                        "detail": "Your Indo Account password was updated.",
+                        "created_at": updated_at,
+                    },
+                    "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                }
+            },
+        ]
+        if verification_key:
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": self.table.name,
+                        "Key": verification_key,
+                        "ConditionExpression": "user_id = :user_id AND #action = :action AND expires_at > :now",
+                        "ExpressionAttributeNames": {"#action": "action"},
+                        "ExpressionAttributeValues": {
+                            ":user_id": user_id,
+                            ":action": "change_password",
+                            ":now": int(time.time()),
+                        },
+                    }
+                }
+            )
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Password could not be changed. Verify again.") from error
 
     def revoke_token(self, token: str) -> None:
         try:

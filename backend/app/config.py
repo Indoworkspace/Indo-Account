@@ -29,6 +29,7 @@ class Settings:
     otp_verification_seconds: int = int(os.getenv("OTP_VERIFICATION_SECONDS", "900"))
     otp_max_attempts: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     require_signup_email_otp: bool = _enabled("REQUIRE_SIGNUP_EMAIL_OTP")
+    require_sensitive_action_otp: bool = _enabled("REQUIRE_SENSITIVE_ACTION_OTP")
 
 
 settings = Settings()

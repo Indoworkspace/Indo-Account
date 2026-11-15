@@ -99,3 +99,13 @@ class SesEmailSender:
             introduction="Use this code to confirm your new Indo Account recovery email:",
             failure_message="Recovery email verification could not be sent. Try again shortly.",
         )
+
+    def send_security_action_otp(self, destination: str, code: str, action_label: str) -> None:
+        self._send_otp(
+            destination,
+            code,
+            subject="Confirm your Indo Account security change",
+            heading="Confirm this security change",
+            introduction=f"Use this code to confirm {action_label}:",
+            failure_message="Security verification email could not be sent. Try again shortly.",
+        )
