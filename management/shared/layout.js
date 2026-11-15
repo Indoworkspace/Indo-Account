@@ -1,4 +1,4 @@
-import {Store} from '../../shared/session-store.js?v=20261115-delete1';
+import {Store} from '../../shared/session-store.js?v=20261115-notifications1';
 
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},
