@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261115-sessions1';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261115-auth1';
 
 const signInPage='../../Sign%20in/index.html';
 
@@ -28,7 +28,7 @@ function render(){
 }
 
 async function start(){
-  try{await Store.refresh()}
+  try{await Store.refresh();window.__indoSessionValidated=true}
   catch(error){render();toast(error.message);return}
   render();
 }

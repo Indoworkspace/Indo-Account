@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261115-recovery1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261115-auth1';
 
 const u=user();
 const iconFiles={
