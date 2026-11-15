@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261115-notifications1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261115-mobile1';
 
 const optional=[
   ['signin','Sign-in alerts','Get notified when a browser or device signs in.'],

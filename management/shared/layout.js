@@ -1,4 +1,4 @@
-import {Store} from '../../shared/session-store.js?v=20261115-account1';
+import {Store} from '../../shared/session-store.js?v=20261115-mobile1';
 
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},
@@ -103,14 +103,21 @@ export function setup(active,content,prefix='../'){
     }
     @media(max-width:479px){
       .app-card{padding:14px}
-      .home-section .app-card,.content>.panel .grid.three .app-card{grid-template-columns:52px minmax(0,1fr);column-gap:11px}
-      .home-section .app-card .app-badge,.content>.panel .grid.three .app-card .app-badge{width:50px;height:50px}
-      .home-section .app-card .secondary,.content>.panel .grid.three .app-card .secondary{grid-column:1/-1;grid-row:auto;justify-self:stretch;width:100%;margin-top:12px}
+      .home-section .app-card,.content>.panel .grid.three .app-card{grid-template-columns:48px minmax(0,1fr) auto;column-gap:9px}
+      .home-section .app-card .app-badge,.content>.panel .grid.three .app-card .app-badge{width:46px;height:46px}
+      .home-section .app-card .secondary,.content>.panel .grid.three .app-card .secondary{grid-column:3;grid-row:1 / span 2;justify-self:end;width:auto;margin:0;padding:8px 9px;font-size:11px;white-space:nowrap}
       .app-list .app-card{grid-template-columns:48px minmax(0,1fr) auto;column-gap:9px;padding:12px}
       .app-list .app-badge{width:46px;height:46px;font-size:19px}
       .app-list .app-card-copy h2,.app-list .app-card-copy h3{font-size:15px}
       .app-list .app-card-copy p{font-size:12px}
       .app-list .secondary{grid-column:3;grid-row:1;justify-self:end;align-self:center;width:auto;margin:0;padding:8px 9px;font-size:11px}
+    }
+    @media(max-width:360px){
+      .topbar{padding-inline:8px}.topbar .brand{gap:7px;font-size:14px}.topbar .mark{width:28px;height:28px}.menu-toggle{width:32px;height:32px;padding:6px}.user-chip{gap:3px}.user-chip .avatar{width:30px;height:30px}.user-chip .signout{font-size:10px;padding-inline:4px}
+      .layout{padding-inline:8px}.panel,.home-section{padding:13px}
+      .home-section .app-card,.content>.panel .grid.three .app-card,.app-list .app-card{grid-template-columns:42px minmax(0,1fr) auto;column-gap:7px;padding:10px}
+      .home-section .app-card .app-badge,.content>.panel .grid.three .app-card .app-badge,.app-list .app-badge{width:40px;height:40px;font-size:17px}
+      .home-section .app-card .secondary,.content>.panel .grid.three .app-card .secondary,.app-list .secondary{padding:7px 7px;font-size:10px}
     }
   `;
   document.head.append(responsiveStyle);
