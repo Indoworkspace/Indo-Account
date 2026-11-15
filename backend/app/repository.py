@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import copy
+import json
 import logging
 import hmac
 import time
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
 from .security import hash_password, new_session_token, new_verification_token, token_digest, verify_password
@@ -53,6 +56,14 @@ class OtpRateLimitError(OtpError):
         self.retry_after = max(1, retry_after)
 
 
+class PayloadTooLargeError(Exception):
+    pass
+
+
+class AppPausedError(Exception):
+    pass
+
+
 class DynamoAccountRepository:
     """Single-table DynamoDB access for Indo Account.
 
@@ -66,9 +77,9 @@ class DynamoAccountRepository:
         "phone": "phone",
     }
     APP_DEFAULTS = {
-        "SANKALPA": {"name": "Sankalp", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "memory": [], "preferences": {}}},
-        "EYESEARCH": {"name": "Eyesearch Search Engine", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
-        "EYEBROWSE": {"name": "Eyebrowse Browser", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
+        "SANKALPA": {"name": "Sankalp", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "memory": [], "preferences": {}}},
+        "EYESEARCH": {"name": "Eyesearch Search Engine", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
+        "EYEBROWSE": {"name": "Eyebrowse Browser", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
     }
 
     def __init__(
@@ -80,6 +91,12 @@ class DynamoAccountRepository:
         session_activity_update_seconds: int = 300,
         otp_max_attempts: int = 5,
         otp_verification_seconds: int = 900,
+        app_token_days: int = 30,
+        app_code_seconds: int = 60,
+        app_history_limit: int = 500,
+        app_saved_limit: int = 500,
+        app_box_max_bytes: int = 200 * 1024,
+        app_max_sessions: int = 5,
     ):
         self.table = table
         self.session_seconds = session_days * 86_400
@@ -87,6 +104,12 @@ class DynamoAccountRepository:
         self.session_activity_update_seconds = max(60, session_activity_update_seconds)
         self.otp_max_attempts = otp_max_attempts
         self.otp_verification_seconds = otp_verification_seconds
+        self.app_token_seconds = max(300, app_token_days * 86_400)
+        self.app_code_seconds = max(30, app_code_seconds)
+        self.app_history_limit = max(1, app_history_limit)
+        self.app_saved_limit = max(1, app_saved_limit)
+        self.app_box_max_bytes = max(4096, app_box_max_bytes)
+        self.app_max_sessions = max(1, app_max_sessions)
 
     @staticmethod
     def _profile_key(user_id: str) -> dict[str, str]:
@@ -1436,7 +1459,8 @@ class DynamoAccountRepository:
             ConsistentRead=True,
         )
         items = response.get("Items", [])
-        apps = {key: {**value, "key": key} for key, value in self.APP_DEFAULTS.items()}
+        apps = {key: {**copy.deepcopy(value), "key": key} for key, value in self.APP_DEFAULTS.items()}
+        app_sessions: dict[str, list[dict[str, Any]]] = {}
         notifications = {"security": True, "signin": True, "account": True, "updates": True, "billing": True, "news": False}
         billing = {"company": "", "gstin": "", "address": "", "state": ""}
         sessions: list[dict[str, Any]] = []
@@ -1449,6 +1473,13 @@ class DynamoAccountRepository:
                 key = sort_key.split("#")[1]
                 if key in apps:
                     apps[key] = {**apps[key], **item.get("state", {}), "key": key}
+            elif sort_key.startswith("APP#") and "#SESSION#" in sort_key:
+                if int(item.get("ttl", 0)) <= int(time.time()):
+                    continue
+                app_key = sort_key.split("#")[1]
+                app_session = self._public(item)
+                app_session.pop("token_hash", None)
+                app_sessions.setdefault(app_key, []).append(app_session)
             elif sort_key == "SETTINGS#NOTIFICATIONS":
                 notifications.update(item.get("state", {}))
             elif sort_key == "BILLING#PROFILE":
@@ -1466,6 +1497,14 @@ class DynamoAccountRepository:
                 invoices.append(self._public(item))
             elif sort_key.startswith("EVENT#"):
                 security_events.append(self._public(item))
+        for key, box in apps.items():
+            sessions_for_app = sorted(app_sessions.get(key, []), key=lambda item: str(item.get("created_at", "")))
+            box["sessions"] = sessions_for_app
+            box["connected"] = bool(sessions_for_app)
+            box["counts"] = {
+                "history": len(box.get("data", {}).get("history", [])),
+                "saved": len(box.get("data", {}).get("saved", [])),
+            }
         security_events.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
         return {
             **profile,
@@ -1831,3 +1870,415 @@ class DynamoAccountRepository:
                 batch.delete_item(Key=key)
 
 
+
+    # ------------------------------------------------------------------
+    # App data — Sankalp, Eyesearch, Eyebrowse
+    #
+    # Each app owns exactly one item, APP#<KEY>#STATE, plus its own
+    # session items, APP#<KEY>#SESSION#<id>. An app token can only reach
+    # its own key, and the panel can reach all three.
+    # ------------------------------------------------------------------
+
+    APP_STATUSES = {"Active", "Paused"}
+    APP_PREFERENCES = {
+        "SANKALPA": {"assistant_language", "memory_enabled"},
+        "EYESEARCH": {"safe_search", "results_per_page", "region"},
+        "EYEBROWSE": {"search_engine", "theme", "history_sync", "safe_browsing", "homepage"},
+    }
+
+    @staticmethod
+    def _app_state_key(user_id: str, app: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"APP#{app}#STATE"}
+
+    @staticmethod
+    def _app_session_key(user_id: str, app: str, session_id: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"APP#{app}#SESSION#{session_id}"}
+
+    @staticmethod
+    def _app_code_key(app: str, code_hash: str) -> dict[str, str]:
+        return {"PK": f"APPCODE#{app}#{code_hash}", "SK": "CODE"}
+
+    @classmethod
+    def app_defaults(cls, app: str) -> dict[str, Any]:
+        if app not in cls.APP_DEFAULTS:
+            raise NotFoundError("This app is not registered with Indo Account.")
+        return copy.deepcopy(cls.APP_DEFAULTS[app])
+
+    @staticmethod
+    def strip_url(value: str, limit: int = 2000) -> str:
+        """Remove query string and fragment so a token cannot leak through a URL."""
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        try:
+            parts = urlsplit(raw)
+        except ValueError:
+            return raw[:limit]
+        cleaned = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+        return cleaned[:limit]
+
+    @staticmethod
+    def clean_text(value: str, limit: int) -> str:
+        return " ".join(str(value or "").split())[:limit]
+
+    def _app_box(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self.app_defaults(app)
+        item = self.table.get_item(Key=self._app_state_key(user_id, app), ConsistentRead=True).get("Item")
+        if item:
+            stored = item.get("state", {})
+            for field in ("name", "status", "connected", "connected_at", "last_used_at", "plan", "quota", "renewal", "preferences"):
+                if field in stored:
+                    box[field] = stored[field]
+            if isinstance(stored.get("data"), dict):
+                box["data"].update(stored["data"])
+        box["key"] = app
+        box.setdefault("preferences", box["data"].get("preferences", {}))
+        return box
+
+    def _write_app_box(self, user_id: str, app: str, box: dict[str, Any]) -> None:
+        data: dict[str, Any] = {
+            "history": list(box.get("data", {}).get("history", []))[-self.app_history_limit:],
+            "saved": list(box.get("data", {}).get("saved", []))[-self.app_saved_limit:],
+        }
+        if "memory" in self.APP_DEFAULTS[app]["data"]:
+            data["memory"] = list(box.get("data", {}).get("memory", []))[-self.app_history_limit:]
+        state = {
+            "name": box.get("name", self.APP_DEFAULTS[app]["name"]),
+            "status": box.get("status", "Active"),
+            "connected": bool(box.get("connected", False)),
+            "connected_at": box.get("connected_at"),
+            "last_used_at": box.get("last_used_at"),
+            "plan": box.get("plan", "Not connected"),
+            "quota": box.get("quota", "No usage yet"),
+            "renewal": box.get("renewal", "—"),
+            "preferences": dict(box.get("preferences") or {}),
+            "data": data,
+        }
+        if len(json.dumps(state, separators=(",", ":")).encode()) > self.app_box_max_bytes:
+            raise PayloadTooLargeError("This app's data has reached its size limit. Clear some history and try again.")
+        self.table.put_item(
+            Item={
+                **self._app_state_key(user_id, app),
+                "entity_type": "APP_STATE",
+                "state": state,
+                "updated_at": utc_now(),
+            }
+        )
+
+    def get_app_box(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        sessions = self._app_sessions(user_id, app)
+        box["connected"] = bool(sessions) or bool(box.get("connected"))
+        box["sessions"] = sessions
+        box["counts"] = {
+            "history": len(box["data"].get("history", [])),
+            "saved": len(box["data"].get("saved", [])),
+        }
+        return box
+
+    def list_app_boxes(self, user_id: str) -> list[dict[str, Any]]:
+        return [self.get_app_box(user_id, app) for app in self.APP_DEFAULTS]
+
+    def _app_sessions(self, user_id: str, app: str) -> list[dict[str, Any]]:
+        now = int(time.time())
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": f"APP#{app}#SESSION#"},
+            ConsistentRead=True,
+        )
+        sessions = []
+        for item in response.get("Items", []):
+            if int(item.get("ttl", 0)) <= now:
+                continue
+            session = self._public(item)
+            session.pop("token_hash", None)
+            sessions.append(session)
+        sessions.sort(key=lambda item: str(item.get("created_at", "")))
+        return sessions
+
+    def issue_app_token(self, user_id: str, app: str, device: str) -> dict[str, Any]:
+        self.app_defaults(app)
+        token = new_session_token()
+        session_id = f"aps_{uuid4().hex[:18]}"
+        now = int(time.time())
+        active = self._app_sessions(user_id, app)
+        overflow = active[: max(0, len(active) - self.app_max_sessions + 1)]
+        for session in overflow:
+            self.table.delete_item(Key={"PK": session["PK"], "SK": session["SK"]})
+        self.table.put_item(
+            Item={
+                **self._app_session_key(user_id, app, session_id),
+                "entity_type": "APP_SESSION",
+                "session_id": session_id,
+                "app": app,
+                "token_hash": token_digest(token),
+                "device": self.clean_text(device, 120) or "Unknown device",
+                "created_at": utc_now(),
+                "last_used_at": utc_now(),
+                "last_used_epoch": now,
+                "ttl": now + self.app_token_seconds,
+            }
+        )
+        box = self._app_box(user_id, app)
+        box["connected"] = True
+        if not box.get("connected_at"):
+            box["connected_at"] = utc_now()
+        box["last_used_at"] = utc_now()
+        self._write_app_box(user_id, app, box)
+        self.record_security_event(
+            user_id,
+            "app.connected",
+            f"{box['name']} connected",
+            f"{self.clean_text(device, 120) or 'A device'} was given access to {box['name']} data.",
+        )
+        return {
+            "token": f"{app}.{user_id}.{token}",
+            "expires_in": self.app_token_seconds,
+            "session_id": session_id,
+        }
+
+    def user_from_app_token(self, token: str) -> tuple[str, str, str]:
+        try:
+            app, user_id, opaque = token.split(".", 2)
+        except ValueError as error:
+            raise AuthenticationError("App session is invalid.") from error
+        if app not in self.APP_DEFAULTS:
+            raise AuthenticationError("App session is invalid.")
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": f"APP#{app}#SESSION#"},
+            ConsistentRead=True,
+        )
+        digest = token_digest(opaque)
+        session = next((item for item in response.get("Items", []) if item.get("token_hash") == digest), None)
+        now = int(time.time())
+        if not session or int(session.get("ttl", 0)) <= now:
+            raise AuthenticationError("App session has expired.")
+        if now - int(session.get("last_used_epoch", 0)) >= self.session_activity_update_seconds:
+            try:
+                self.table.update_item(
+                    Key={"PK": session["PK"], "SK": session["SK"]},
+                    UpdateExpression="SET last_used_at = :stamp, last_used_epoch = :epoch",
+                    ConditionExpression="token_hash = :digest AND #ttl > :now",
+                    ExpressionAttributeNames={"#ttl": "ttl"},
+                    ExpressionAttributeValues={
+                        ":stamp": utc_now(),
+                        ":epoch": now,
+                        ":digest": digest,
+                        ":now": now,
+                    },
+                )
+            except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+                raise AuthenticationError("App session has expired.") from error
+        return user_id, app, str(session.get("session_id") or session["SK"].rsplit("#", 1)[-1])
+
+    def revoke_app_sessions(self, user_id: str, app: str, session_id: str | None = None) -> int:
+        self.app_defaults(app)
+        sessions = self._app_sessions(user_id, app)
+        if session_id is None:
+            targets = sessions
+        else:
+            targets = [session for session in sessions if session.get("session_id") == session_id]
+            if not targets:
+                raise NotFoundError("This app session is no longer active.")
+        with self.table.batch_writer() as batch:
+            for session in targets:
+                batch.delete_item(Key=self._app_session_key(user_id, app, str(session["session_id"])))
+        box = self._app_box(user_id, app)
+        box["connected"] = bool(self._app_sessions(user_id, app))
+        self._write_app_box(user_id, app, box)
+        if targets:
+            self.record_security_event(
+                user_id,
+                "app.disconnected" if session_id is None else "app.session_revoked",
+                f"{box['name']} access revoked",
+                f"{len(targets)} session{'s were' if len(targets) != 1 else ' was'} removed from {box['name']}.",
+            )
+        return len(targets)
+
+    def set_app_status(self, user_id: str, app: str, status: str) -> dict[str, Any]:
+        if status not in self.APP_STATUSES:
+            raise ValueError("App status must be Active or Paused.")
+        box = self._app_box(user_id, app)
+        box["status"] = status
+        self._write_app_box(user_id, app, box)
+        self.record_security_event(
+            user_id,
+            "app.paused" if status == "Paused" else "app.resumed",
+            f"{box['name']} {'paused' if status == 'Paused' else 'resumed'}",
+            f"{box['name']} access was set to {status}.",
+        )
+        return self.get_app_box(user_id, app)
+
+    def clear_app_data(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        box["data"] = {key: [] for key in self.APP_DEFAULTS[app]["data"] if isinstance(self.APP_DEFAULTS[app]["data"][key], list)}
+        box["data"]["preferences"] = {}
+        box["preferences"] = {}
+        self._write_app_box(user_id, app, box)
+        self.record_security_event(
+            user_id,
+            "app.data_cleared",
+            f"{box['name']} data cleared",
+            f"All {box['name']} history, saved items and preferences were deleted.",
+        )
+        return self.get_app_box(user_id, app)
+
+    def export_app_box(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self.get_app_box(user_id, app)
+        return {
+            "export_version": "1.0",
+            "exported_at": utc_now(),
+            "app": app,
+            "name": box["name"],
+            "status": box["status"],
+            "connected": box["connected"],
+            "connected_at": box.get("connected_at"),
+            "preferences": box.get("preferences", {}),
+            "history": box["data"].get("history", []),
+            "saved": box["data"].get("saved", []),
+            "sessions": [
+                {key: value for key, value in session.items() if key in {"session_id", "device", "created_at", "last_used_at"}}
+                for session in box["sessions"]
+            ],
+        }
+
+    def update_app_preferences(self, user_id: str, app: str, changes: dict[str, Any]) -> dict[str, Any]:
+        allowed = self.APP_PREFERENCES.get(app, set())
+        box = self._app_box(user_id, app)
+        preferences = dict(box.get("preferences") or {})
+        for key, value in changes.items():
+            if key not in allowed:
+                continue
+            if isinstance(value, bool):
+                preferences[key] = value
+            elif isinstance(value, (int, float)):
+                preferences[key] = value
+            else:
+                preferences[key] = self.clean_text(value, 200)
+        box["preferences"] = preferences
+        box["data"]["preferences"] = preferences
+        box["last_used_at"] = utc_now()
+        self._write_app_box(user_id, app, box)
+        return {"preferences": preferences}
+
+    def _require_active(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        if box.get("status") == "Paused":
+            raise AppPausedError(f"{box['name']} is paused. Resume it in Indo Account to sync again.")
+        return box
+
+    def list_app_saved(self, user_id: str, app: str, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        items = list(box["data"].get("saved", []))
+        items.sort(key=lambda item: str(item.get("added_at", "")), reverse=True)
+        start = 0
+        if cursor:
+            start = next((index + 1 for index, item in enumerate(items) if item.get("id") == cursor), 0)
+        page = items[start : start + max(1, min(limit, 100))]
+        next_cursor = page[-1]["id"] if len(items) > start + len(page) else None
+        return {"items": page, "next_cursor": next_cursor, "total": len(items)}
+
+    def add_app_saved(self, user_id: str, app: str, title: str, url: str) -> dict[str, Any]:
+        box = self._require_active(user_id, app)
+        cleaned_url = self.strip_url(url)
+        if not cleaned_url:
+            raise ValueError("A saved item needs a URL.")
+        item = {
+            "id": f"sv_{uuid4().hex[:12]}",
+            "title": self.clean_text(title, 300) or cleaned_url,
+            "url": cleaned_url,
+            "added_at": utc_now(),
+        }
+        saved = list(box["data"].get("saved", []))
+        saved = [entry for entry in saved if entry.get("url") != cleaned_url]
+        saved.append(item)
+        box["data"]["saved"] = saved[-self.app_saved_limit:]
+        box["last_used_at"] = utc_now()
+        self._write_app_box(user_id, app, box)
+        return item
+
+    def delete_app_saved(self, user_id: str, app: str, item_id: str) -> None:
+        box = self._require_active(user_id, app)
+        saved = list(box["data"].get("saved", []))
+        remaining = [entry for entry in saved if entry.get("id") != item_id]
+        if len(remaining) == len(saved):
+            raise NotFoundError("That saved item was not found.")
+        box["data"]["saved"] = remaining
+        self._write_app_box(user_id, app, box)
+
+    def list_app_history(self, user_id: str, app: str, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        items = list(box["data"].get("history", []))
+        items.sort(key=lambda item: str(item.get("visited_at", "")), reverse=True)
+        start = 0
+        if cursor:
+            start = next((index + 1 for index, item in enumerate(items) if item.get("id") == cursor), 0)
+        page = items[start : start + max(1, min(limit, 100))]
+        next_cursor = page[-1]["id"] if len(items) > start + len(page) else None
+        return {"items": page, "next_cursor": next_cursor, "total": len(items)}
+
+    def add_app_history(self, user_id: str, app: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
+        box = self._require_active(user_id, app)
+        if box.get("preferences", {}).get("history_sync") is False and app == "EYEBROWSE":
+            raise AppPausedError("History sync is turned off for this app.")
+        history = list(box["data"].get("history", []))
+        added = 0
+        for entry in entries[:100]:
+            url = self.strip_url(str(entry.get("url") or entry.get("origin") or ""))
+            if not url:
+                continue
+            parts = urlsplit(url)
+            history.append(
+                {
+                    "id": f"hs_{uuid4().hex[:12]}",
+                    "title": self.clean_text(entry.get("title", ""), 300) or url,
+                    "origin": f"{parts.scheme}://{parts.netloc}" if parts.netloc else url,
+                    "path": (parts.path or "/")[:500],
+                    "visited_at": self.clean_text(entry.get("visited_at", ""), 40) or utc_now(),
+                    "visits": max(1, min(int(entry.get("visits", 1) or 1), 1000)),
+                }
+            )
+            added += 1
+        box["data"]["history"] = history[-self.app_history_limit:]
+        box["last_used_at"] = utc_now()
+        self._write_app_box(user_id, app, box)
+        return {"added": added, "total": len(box["data"]["history"])}
+
+    def clear_app_history(self, user_id: str, app: str) -> dict[str, Any]:
+        box = self._app_box(user_id, app)
+        box["data"]["history"] = []
+        self._write_app_box(user_id, app, box)
+        return {"history": 0}
+
+    def create_app_code(self, user_id: str, app: str, code_hash: str, code_challenge: str) -> None:
+        self.app_defaults(app)
+        now = int(time.time())
+        self.table.put_item(
+            Item={
+                **self._app_code_key(app, code_hash),
+                "entity_type": "APP_CODE",
+                "user_id": user_id,
+                "app": app,
+                "code_challenge": code_challenge,
+                "created_at": utc_now(),
+                "ttl": now + self.app_code_seconds,
+            }
+        )
+
+    def consume_app_code(self, app: str, code_hash: str) -> dict[str, Any]:
+        key = self._app_code_key(app, code_hash)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if not item or int(item.get("ttl", 0)) <= now:
+            raise OtpError("This sign-in request has expired. Start again from the app.")
+        try:
+            self.table.delete_item(
+                Key=key,
+                ConditionExpression="attribute_exists(PK) AND #ttl > :now",
+                ExpressionAttributeNames={"#ttl": "ttl"},
+                ExpressionAttributeValues={":now": now},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            raise OtpError("This sign-in request has expired. Start again from the app.") from error
+        return item
