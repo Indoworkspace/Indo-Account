@@ -1,5 +1,5 @@
 import {Store as BaseStore} from './store.js?v=20261114-0800';
-import {Api} from './api-client.js?v=20261114-2100';
+import {Api} from './api-client.js?v=20261115-otp1';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
@@ -36,6 +36,8 @@ const localReconnectApp=BaseStore.reconnectApp.bind(BaseStore);
 
 Store.init=()=>{localInit();const current=activeUser(read());if(Api.hasSession())return current||null;if(current?.remote_managed){clearBrowserSession();return null}return localCurrent()};
 Store.create=async input=>mirrorRemote(await Api.signup(input));
+Store.requestSignupOtp=email=>Api.requestSignupOtp(email);
+Store.verifySignupOtp=(email,code)=>Api.verifySignupOtp(email,code);
 Store.login=async(identifier,password)=>mirrorRemote(await Api.login(identifier,password));
 Store.current=()=>{const current=activeUser(read());if(Api.hasSession())return current||null;if(current?.remote_managed){clearBrowserSession();return null}return localCurrent()};
 Store.refresh=async()=>{if(!Api.hasSession())return Store.current();return mirrorRemote(await Api.me())};

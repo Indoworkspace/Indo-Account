@@ -31,7 +31,9 @@ function remember(result){sessionStorage.setItem(TOKEN_KEY,result.token);return 
 export const Api={
   baseUrl:API_BASE_URL,
   hasSession:()=>!!token(),
-  signup:input=>request('/api/v1/auth/signup',{method:'POST',authenticated:false,body:{...input,secondary_email_verified:true,device:device()}}).then(remember),
+  requestSignupOtp:email=>request('/api/v1/auth/email-otp/request',{method:'POST',authenticated:false,body:{email}}),
+  verifySignupOtp:(email,code)=>request('/api/v1/auth/email-otp/verify',{method:'POST',authenticated:false,body:{email,code}}),
+  signup:input=>request('/api/v1/auth/signup',{method:'POST',authenticated:false,body:{...input,device:device()}}).then(remember),
   login:(identifier,password)=>request('/api/v1/auth/login',{method:'POST',authenticated:false,body:{identifier,password,device:device()}}).then(remember),
   logout:async()=>{try{if(token())await request('/api/v1/auth/logout',{method:'POST',keepalive:true})}finally{sessionStorage.removeItem(TOKEN_KEY)}},
   me:()=>request('/api/v1/me'),
