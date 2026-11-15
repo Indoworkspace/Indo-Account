@@ -32,6 +32,7 @@ export const Api={
   baseUrl:API_BASE_URL,
   hasSession:()=>!!token(),
   clearSession:()=>sessionStorage.removeItem(TOKEN_KEY),
+  checkIndoId:handle=>request('/api/v1/auth/indo-id/availability',{method:'POST',authenticated:false,body:{handle}}),
   requestSignupOtp:email=>request('/api/v1/auth/email-otp/request',{method:'POST',authenticated:false,body:{email}}),
   verifySignupOtp:(email,code)=>request('/api/v1/auth/email-otp/verify',{method:'POST',authenticated:false,body:{email,code}}),
   requestPasswordReset:identifier=>request('/api/v1/auth/password-reset/request',{method:'POST',authenticated:false,body:{identifier}}),

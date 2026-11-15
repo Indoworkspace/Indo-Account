@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Annotated, Any, Literal
 from uuid import uuid4
@@ -39,7 +40,7 @@ email_sender = SesEmailSender(
     from_email=settings.otp_from_email,
 )
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Indo Account API", version="0.8.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.8.1", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -60,10 +61,33 @@ class RecoveryEmailOtpVerify(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
+RESERVED_INDO_IDS = {
+    "admin", "administrator", "support", "noreply", "verify", "security", "indo",
+    "indoworkspace", "eyesearch", "sankalp", "eyebrowse", "help", "billing", "account", "privacy",
+}
+
+
+def normalize_indo_handle(value: str) -> str:
+    handle = value.strip().lower().removesuffix("@eyemail.in")
+    valid = bool(re.fullmatch(r"[a-z0-9](?:[a-z0-9._]{4,28}[a-z0-9])", handle))
+    if not valid or ".." in handle or "__" in handle or handle in RESERVED_INDO_IDS:
+        raise ValueError("Use 6–30 lowercase letters, numbers, dots, or underscores. Start and end with a letter or number.")
+    return handle
+
+
+class IndoIdAvailabilityRequest(BaseModel):
+    handle: str = Field(min_length=6, max_length=41)
+
+    @field_validator("handle")
+    @classmethod
+    def valid_handle(cls, value: str) -> str:
+        return normalize_indo_handle(value)
+
+
 class SignupRequest(BaseModel):
     full_name: str = Field(min_length=2, max_length=80)
     nickname: str = Field(min_length=2, max_length=30)
-    handle: str = Field(min_length=6, max_length=30, pattern=r"^[a-z0-9._]+(?:@eyemail\.in)?$")
+    handle: str = Field(min_length=6, max_length=41, pattern=r"^[a-z0-9._]+(?:@eyemail\.in)?$")
     secondary_email: EmailStr
     email_verification_token: str | None = Field(default=None, min_length=32, max_length=512)
     phone: str = Field(pattern=r"^(?:\+?91)?[6-9]\d{9}$")
@@ -72,6 +96,11 @@ class SignupRequest(BaseModel):
     gender: str | None = None
     password: str = Field(min_length=8, max_length=64)
     device: str = Field(default="Web browser", max_length=120)
+
+    @field_validator("handle")
+    @classmethod
+    def valid_handle(cls, value: str) -> str:
+        return normalize_indo_handle(value)
 
     @field_validator("password")
     @classmethod
@@ -290,6 +319,16 @@ def request_email_otp(payload: EmailOtpRequest) -> dict[str, Any]:
         "message": "Verification code sent.",
         "expires_in": settings.otp_ttl_seconds,
         "resend_after": settings.otp_resend_seconds,
+    }
+
+
+@app.post("/api/v1/auth/indo-id/availability")
+def indo_id_availability(payload: IndoIdAvailabilityRequest) -> dict[str, Any]:
+    handle = payload.handle
+    return {
+        "handle": handle,
+        "indo_id": f"{handle}@eyemail.in",
+        "available": repository.indo_id_available(handle),
     }
 
 

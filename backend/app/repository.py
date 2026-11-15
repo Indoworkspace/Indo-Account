@@ -155,6 +155,16 @@ class DynamoAccountRepository:
             ).get("Item")
         )
 
+    def indo_id_available(self, handle: str) -> bool:
+        normalized = handle.strip().lower().removesuffix("@eyemail.in")
+        eyemail = f"{normalized}@eyemail.in"
+        return not bool(
+            self.table.get_item(
+                Key=self._lookup_key("EYEMAIL", eyemail),
+                ConsistentRead=True,
+            ).get("Item")
+        )
+
     def recovery_email_target(self, user_id: str, email: str) -> str:
         normalized = email.strip().lower()
         profile = self.table.get_item(
