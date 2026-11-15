@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261115-delete1';
+import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261115-account1';
 
 const u=user();
 
@@ -24,7 +24,18 @@ style.textContent=`
 `;
 document.head.append(style);
 
-$('#export').onclick=()=>download(Store.exportData(),'indo-account-data.json');
+function startExportTimer(button,duration=60){clearInterval(button._exportTimer);let seconds=Number(duration)||60;const update=()=>{button.disabled=seconds>0;button.textContent=seconds>0?`Resend in ${seconds}s`:'Resend OTP'};update();button._exportTimer=setInterval(()=>{seconds-=1;update();if(seconds<=0)clearInterval(button._exportTimer)},1000)}
+function openExportOtp(){
+  modal('Verify data download',`<p>Enter the code sent to <b>${esc(u.secondary_email)}</b>. The verification can be used only once.</p><div class="delete-otp-row"><div class="field"><label for="export-otp">6-digit OTP</label><input id="export-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div><button class="secondary export-resend" type="button">Resend OTP</button></div><p class="delete-otp-status" aria-live="polite">Enter the verification code to securely download your data.</p>`,()=>{verifyAndDownload();return false});
+  const input=$('#export-otp'),confirm=$('#confirm'),resend=document.querySelector('.export-resend'),status=document.querySelector('.delete-otp-status');let verificationToken='';
+  confirm.textContent='Verify & download';confirm.disabled=true;
+  input.oninput=()=>{input.value=input.value.replace(/\D/g,'').slice(0,6);confirm.disabled=input.value.length!==6;status.classList.remove('error')};
+  const send=async()=>{resend.disabled=true;resend.textContent='Sending…';status.textContent='Sending a new verification code…';status.classList.remove('error');verificationToken='';try{const result=await Store.requestSecurityOtp('export_data');status.textContent=`New code sent to ${u.secondary_email}.`;startExportTimer(resend,result.resend_after);input.value='';confirm.disabled=true;input.focus()}catch(error){status.textContent=error.message;status.classList.add('error');resend.disabled=false;resend.textContent='Resend OTP'}};
+  resend.onclick=send;
+  async function verifyAndDownload(){confirm.disabled=true;confirm.textContent='Preparing…';status.classList.remove('error');try{if(!verificationToken)verificationToken=(await Store.verifySecurityOtp('export_data',input.value)).verification_token;const data=await Store.exportData(verificationToken);download(data,`indo-account-data-${new Date().toISOString().slice(0,10)}.json`);document.querySelector('#cancel')?.click()}catch(error){status.textContent=error.message;status.classList.add('error');if(/expired|verification code/i.test(error.message))verificationToken='';confirm.disabled=false;confirm.textContent='Verify & download'}}
+  input.focus();
+}
+$('#export').onclick=()=>{const button=$('#export');button.disabled=true;button.textContent='Sending OTP…';Store.requestSecurityOtp('export_data').then(result=>{openExportOtp();startExportTimer(document.querySelector('.export-resend'),result.resend_after)}).catch(error=>toast(error.message)).finally(()=>{button.disabled=false;button.textContent='Download JSON'})};
 function startDeleteTimer(button,duration=60){clearInterval(button._deleteTimer);let seconds=Number(duration)||60;const update=()=>{button.disabled=seconds>0;button.textContent=seconds>0?`Resend in ${seconds}s`:'Resend OTP'};update();button._deleteTimer=setInterval(()=>{seconds-=1;update();if(seconds<=0)clearInterval(button._deleteTimer)},1000)}
 function openDeleteOtp(){
   modal('Verify account deletion',`<p>Enter the code sent to <b>${esc(u.secondary_email)}</b>. This code only authorizes permanent account deletion.</p><div class="delete-otp-row"><div class="field"><label for="delete-otp">6-digit OTP</label><input id="delete-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div><button class="secondary delete-resend" type="button">Resend OTP</button></div><p class="delete-otp-status" aria-live="polite">Enter the verification code to continue.</p>`,()=>{verifyAndDelete();return false},true);

@@ -23,6 +23,7 @@ class Settings:
     allowed_origins: tuple[str, ...] = _origins()
     session_days: int = int(os.getenv("SESSION_DAYS", "30"))
     otp_from_email: str = os.getenv("OTP_FROM_EMAIL", "no-reply@eyemail.in")
+    support_to_email: str = os.getenv("SUPPORT_TO_EMAIL", "")
     otp_hash_secret: str = os.getenv("OTP_HASH_SECRET", "")
     otp_ttl_seconds: int = int(os.getenv("OTP_TTL_SECONDS", "600"))
     otp_resend_seconds: int = int(os.getenv("OTP_RESEND_SECONDS", "60"))

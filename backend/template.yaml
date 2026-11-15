@@ -13,6 +13,9 @@ Parameters:
     Type: String
     NoEcho: true
     MinLength: 32
+  SupportToEmail:
+    Type: String
+    Default: ''
 
 Resources:
   IndoAccountApi:
@@ -31,6 +34,7 @@ Resources:
           ALLOWED_ORIGINS: !Ref AllowedOrigins
           SESSION_DAYS: '30'
           OTP_FROM_EMAIL: !Ref OtpFromEmail
+          SUPPORT_TO_EMAIL: !Ref SupportToEmail
           OTP_HASH_SECRET: !Ref OtpHashSecret
           OTP_TTL_SECONDS: '600'
           OTP_RESEND_SECONDS: '60'

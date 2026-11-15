@@ -1,4 +1,4 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261115-security1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261115-account1';
 
 const u=user();
 const icon={
@@ -12,7 +12,7 @@ const icon={
 const svg=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icon[name]}</svg>`;
 const method=(name,title,detail,action,extra='')=>`<button class="security-item" type="button" data-action="${action}"><span class="security-icon">${svg(name)}</span><span><b>${title}</b><small>${detail}</small></span>${extra}<span class="security-arrow">›</span></button>`;
 const eventTime=value=>{try{return new Date(value).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}catch{return 'Recently'}};
-const events=(u.security_events||[]).slice(0,4);
+const events=(u.security_events||[]).slice(0,30);
 const activity=events.length?events.map(event=>`<div class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>${esc(event.title)}</b><small>${esc(event.detail)} · ${esc(eventTime(event.created_at))}</small></span><span class="badge">Account</span></div>`).join(''):`<div class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>No recent security alerts</b><small>No unusual activity has been recorded in the last 28 days.</small></span><span class="badge">Protected</span></div>`;
 const passwordEvent=events.find(event=>event.type==='password');
 

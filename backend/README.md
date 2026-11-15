@@ -55,6 +55,9 @@ OTP_RESEND_SECONDS=60
 OTP_VERIFICATION_SECONDS=900
 OTP_MAX_ATTEMPTS=5
 REQUIRE_SIGNUP_EMAIL_OTP=true
+REQUIRE_SENSITIVE_ACTION_OTP=true
+REQUIRE_ACCOUNT_DELETE_OTP=true
+SUPPORT_TO_EMAIL=<private support inbox receiving authenticated requests>
 ```
 
 For a zero-downtime rollout, deploy the OTP endpoints with
@@ -66,6 +69,21 @@ temporarily available.
 The Lambda execution role also needs `ses:SendEmail` for the verified
 `eyemail.in` SES identity. SES production access is required before sending to
 unverified recipient addresses.
+
+## Account alerts, secure export, and support
+
+Security emails are best-effort after the related account action succeeds, so
+an SES delivery problem never rolls back a password or security change. Sign-in
+and account-change preferences are read from `SETTINGS#NOTIFICATIONS`; critical
+security alerts remain enabled.
+
+`POST /api/v1/me/export` accepts only a short-lived, single-use
+`export_data` verification token. The response is built from DynamoDB and omits
+password hashes, bearer-token hashes, OTP challenges, and verification records.
+
+`POST /api/v1/me/support` accepts an authenticated category and message, sends
+it to `SUPPORT_TO_EMAIL`, returns a unique reference number, and sends a
+confirmation to the verified recovery email.
 
 ## Password reset
 

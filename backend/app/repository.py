@@ -117,6 +117,24 @@ class DynamoAccountRepository:
     def _public(item: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in item.items() if key not in {"PK", "SK", "password_hash"}}
 
+    def record_security_event(self, user_id: str, event_type: str, title: str, detail: str) -> None:
+        created_at = utc_now()
+        event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        self.table.put_item(
+            Item={
+                **event_key,
+                "entity_type": "SECURITY_EVENT",
+                "id": event_key["SK"].removeprefix("EVENT#"),
+                "type": event_type,
+                "title": title[:120],
+                "detail": detail[:500],
+                "created_at": created_at,
+            }
+        )
+
     def table_status(self) -> dict[str, Any]:
         description = self.table.meta.client.describe_table(TableName=self.table.name)["Table"]
         return {
@@ -470,6 +488,22 @@ class DynamoAccountRepository:
             raise OtpError("Security verification expired. Request a new code.")
         return key
 
+    def consume_security_verification(self, user_id: str, action: str, token: str) -> None:
+        key = self.validated_security_verification(user_id, action, token)
+        try:
+            self.table.delete_item(
+                Key=key,
+                ConditionExpression="user_id = :user_id AND #action = :action AND expires_at > :now",
+                ExpressionAttributeNames={"#action": "action"},
+                ExpressionAttributeValues={
+                    ":user_id": user_id,
+                    ":action": action,
+                    ":now": int(time.time()),
+                },
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            raise OtpError("Security verification expired. Request a new code.") from error
+
     def store_signup_otp(
         self,
         email: str,
@@ -711,7 +745,7 @@ class DynamoAccountRepository:
             raise OtpError("Verification could not be completed. Request a new code.") from error
         return reset_token
 
-    def complete_password_reset(self, reset_token: str, new_password: str) -> None:
+    def complete_password_reset(self, reset_token: str, new_password: str) -> str:
         reset_key = self._password_reset_verification_key(reset_token)
         verification = self.table.get_item(Key=reset_key, ConsistentRead=True).get("Item")
         now = int(time.time())
@@ -792,6 +826,7 @@ class DynamoAccountRepository:
             client.transact_write_items(TransactItems=actions)
         except client.exceptions.TransactionCanceledException as error:
             raise OtpError("Password reset could not be completed. Request a new code.") from error
+        return user_id
 
     def create_account(
         self,
@@ -852,7 +887,23 @@ class DynamoAccountRepository:
         # Conditional writes protect each unique lookup. The transaction keeps
         # the profile, auth record and all lookup records atomic.
         client = self.table.meta.client
-        puts = [profile, auth]
+        account_event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        puts = [
+            profile,
+            auth,
+            {
+                **account_event_key,
+                "entity_type": "SECURITY_EVENT",
+                "id": account_event_key["SK"].removeprefix("EVENT#"),
+                "type": "account",
+                "title": "Account created",
+                "detail": "Your Indo Account was created and recovery email was verified.",
+                "created_at": created_at,
+            },
+        ]
         puts.extend(
             {
                 **self._lookup_key(kind, value),
@@ -940,6 +991,7 @@ class DynamoAccountRepository:
         if not auth or not verify_password(password, auth.get("password_hash", "")):
             raise AuthenticationError("Identifier or password is incorrect.")
         token = self.create_bearer_session(user_id, device)
+        self.record_security_event(user_id, "signin", "New sign-in", f"Your Indo Account was signed in on {device}.")
         return self.get_account_state(user_id, current_token=token), token
 
     def create_session(self, user_id: str, device: str) -> str:
@@ -1044,6 +1096,7 @@ class DynamoAccountRepository:
                 invoices.append(self._public(item))
             elif sort_key.startswith("EVENT#"):
                 security_events.append(self._public(item))
+        security_events.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
         return {
             **profile,
             "apps": apps,
@@ -1052,8 +1105,49 @@ class DynamoAccountRepository:
             "sessions": sessions,
             "oauth_connections": connections,
             "invoices": invoices,
-            "security_events": security_events,
+            "security_events": security_events[:30],
         }
+
+    def export_account_data(self, user_id: str, verification_token: str) -> dict[str, Any]:
+        self.consume_security_verification(user_id, "export_data", verification_token)
+        state = self.get_account_state(user_id)
+        export = {
+            "export_version": "1.0",
+            "exported_at": utc_now(),
+            "account": {
+                key: state.get(key)
+                for key in ("user_id", "eyemail_id", "account_type", "account_status", "created_at", "updated_at")
+            },
+            "profile": {
+                "full_name": state.get("full_name"),
+                "nickname": state.get("nickname"),
+                "gender": state.get("gender"),
+                "date_of_birth": state.get("dob"),
+                "preferred_language": state.get("language"),
+                "profile_photo": state.get("profile_photo", ""),
+                "recovery_email": state.get("secondary_email"),
+                "recovery_email_verified": bool(state.get("secondary_email_verified")),
+                "mobile_number": state.get("phone"),
+                "mobile_number_verified": bool(state.get("phone_verified")),
+                "addresses": {
+                    "home": state.get("home_address", {}),
+                    "work": state.get("work_address", {}),
+                    "other": state.get("other_address", {}),
+                },
+            },
+            "apps": state.get("apps", {}),
+            "connections": state.get("oauth_connections", []),
+            "sessions": state.get("sessions", []),
+            "security": {
+                "two_step": bool(state.get("two_step")),
+                "events": state.get("security_events", []),
+            },
+            "notifications": state.get("notifications", {}),
+            "billing": state.get("billing", {}),
+            "invoices": state.get("invoices", []),
+        }
+        self.record_security_event(user_id, "privacy", "Account data downloaded", "A secure copy of your Indo Account data was downloaded.")
+        return export
 
     def revoke_session(self, user_id: str, session_id: str) -> None:
         key = {"PK": f"USER#{user_id}", "SK": f"SESSION#{session_id}"}
@@ -1065,6 +1159,7 @@ class DynamoAccountRepository:
             )
         except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
             raise NotFoundError("This device session is no longer active.") from error
+        self.record_security_event(user_id, "session", "Device signed out", "A device session was removed from your Indo Account.")
 
     def revoke_sessions(self, user_id: str, *, current_token: str, include_current: bool) -> int:
         current_session_id = self.current_session_id(user_id, current_token)
@@ -1082,6 +1177,12 @@ class DynamoAccountRepository:
             with self.table.batch_writer() as batch:
                 for item in sessions:
                     batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+            self.record_security_event(
+                user_id,
+                "session",
+                "All devices signed out" if include_current else "Other devices signed out",
+                f"{len(sessions)} active device session{'s were' if len(sessions) != 1 else ' was'} removed.",
+            )
         return len(sessions)
 
     def sync_account_state(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -1302,6 +1403,14 @@ class DynamoAccountRepository:
             ConditionExpression="attribute_exists(PK)",
             ReturnValues="ALL_NEW",
         )
+        visible_fields = [key.replace("_", " ") for key in clean if key != "updated_at"]
+        if visible_fields:
+            self.record_security_event(
+                user_id,
+                "profile",
+                "Personal information updated",
+                f"Updated: {', '.join(visible_fields)}.",
+            )
         return self.get_account_state(user_id)
 
     def delete_account(

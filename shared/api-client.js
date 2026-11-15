@@ -51,6 +51,8 @@ export const Api={
   changePassword:(currentPassword,newPassword,verificationToken='')=>request('/api/v1/me/password',{method:'POST',body:{current_password:currentPassword,new_password:newPassword,...(verificationToken?{verification_token:verificationToken}:{})}}),
   signoutSession:sessionId=>request(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}`,{method:'DELETE'}),
   signoutSessions:includeCurrent=>request(`/api/v1/me/sessions?include_current=${includeCurrent?'true':'false'}`,{method:'DELETE'}),
+  exportAccountData:verificationToken=>request('/api/v1/me/export',{method:'POST',body:{verification_token:verificationToken}}),
+  createSupportRequest:(category,message)=>request('/api/v1/me/support',{method:'POST',body:{category,message}}),
   deleteAccount:(verificationToken='')=>request('/api/v1/me',{method:'DELETE',body:verificationToken?{verification_token:verificationToken}:{}})
 };
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import time
 from typing import Annotated, Any, Literal
+from uuid import uuid4
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
@@ -36,7 +38,8 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.7.0", docs_url=None, redoc_url=None)
+logger = logging.getLogger(__name__)
+app = FastAPI(title="Indo Account API", version="0.8.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -144,7 +147,7 @@ class PasswordChange(BaseModel):
         return value
 
 
-SecurityAction = Literal["change_password", "disable_two_step", "delete_account"]
+SecurityAction = Literal["change_password", "disable_two_step", "delete_account", "export_data"]
 
 
 class SecurityOtpRequest(BaseModel):
@@ -160,11 +163,46 @@ class AccountDelete(BaseModel):
     verification_token: str | None = Field(default=None, min_length=32, max_length=512)
 
 
+class AccountExport(BaseModel):
+    verification_token: str = Field(min_length=32, max_length=512)
+
+
+class SupportRequest(BaseModel):
+    category: Literal["Account access", "Security", "Personal information", "Data & privacy", "Other"]
+    message: str = Field(min_length=20, max_length=2000)
+
+
 SECURITY_ACTION_LABELS = {
     "change_password": "changing your password",
     "disable_two_step": "turning off two-step protection",
     "delete_account": "permanently deleting your Indo Account",
+    "export_data": "downloading a copy of your Indo Account data",
 }
+
+
+def send_account_alert(
+    state: dict[str, Any],
+    *,
+    subject: str,
+    heading: str,
+    message: str,
+    preference: str | None = "account",
+) -> None:
+    notifications = state.get("notifications") or {}
+    destination = str(state.get("secondary_email") or "").strip().lower()
+    if not destination or not state.get("secondary_email_verified") or not notifications.get("security", True):
+        return
+    if preference and not notifications.get(preference, True):
+        return
+    try:
+        email_sender.send_account_alert(
+            destination,
+            subject=subject,
+            heading=heading,
+            message=message,
+        )
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.exception("Account action succeeded but its notification email failed")
 
 
 def bearer_token(authorization: Annotated[str | None, Header()] = None) -> str:
@@ -281,6 +319,13 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
 def login(payload: LoginRequest) -> dict[str, Any]:
     try:
         profile, token = repository.authenticate(payload.identifier, payload.password, payload.device)
+        send_account_alert(
+            profile,
+            subject="New sign-in to your Indo Account",
+            heading="New sign-in detected",
+            message=f"Your Indo Account was signed in on {payload.device}.",
+            preference="signin",
+        )
         return {"token": token, "profile": profile}
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
@@ -352,12 +397,24 @@ def verify_password_reset(payload: PasswordResetVerify) -> dict[str, Any]:
     response_class=Response,
 )
 def complete_password_reset(payload: PasswordResetComplete) -> Response:
-    repository.complete_password_reset(payload.reset_token, payload.new_password)
+    user_id = repository.complete_password_reset(payload.reset_token, payload.new_password)
+    send_account_alert(
+        repository.get_account_state(user_id),
+        subject="Your Indo Account password was reset",
+        heading="Password reset completed",
+        message="Your password was reset using recovery email verification. All active device sessions were signed out.",
+        preference=None,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/api/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
 def logout(token: Annotated[str, Depends(bearer_token)]) -> Response:
+    try:
+        user_id = repository.user_from_token(token)
+        repository.record_security_event(user_id, "signout", "Signed out", "An Indo Account browser session was signed out.")
+    except AuthenticationError:
+        pass
     repository.revoke_token(token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -375,7 +432,17 @@ def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
 
 @app.patch("/api/v1/me")
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.update_profile(user_id, payload.model_dump(exclude_none=True))
+    changes = payload.model_dump(exclude_none=True)
+    state = repository.update_profile(user_id, changes)
+    if changes:
+        send_account_alert(
+            state,
+            subject="Your Indo Account profile changed",
+            heading="Personal information updated",
+            message="Personal information in your Indo Account was updated.",
+            preference="account",
+        )
+    return state
 
 
 @app.post("/api/v1/me/recovery-email/request", status_code=202)
@@ -422,7 +489,23 @@ def verify_recovery_email_otp(
         payload.code,
         settings.otp_hash_secret,
     )
-    return repository.verify_recovery_email_otp(user_id, email, code_hash)
+    previous = repository.get_account_state(user_id)
+    state = repository.verify_recovery_email_otp(user_id, email, code_hash)
+    send_account_alert(
+        previous,
+        subject="Your Indo Account recovery email changed",
+        heading="Recovery email changed",
+        message=f"The recovery email on your Indo Account was changed to {email}.",
+        preference=None,
+    )
+    send_account_alert(
+        state,
+        subject="Your Indo Account recovery email changed",
+        heading="Recovery email updated",
+        message="Your recovery email was verified and updated successfully.",
+        preference="account",
+    )
+    return state
 
 
 @app.post("/api/v1/me/security-otp/request", status_code=202)
@@ -492,12 +575,20 @@ def sync_me(payload: AccountStateSync, user_id: Annotated[str, Depends(current_u
 
 @app.patch("/api/v1/me/two-step")
 def update_two_step(payload: TwoStepUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.set_two_step(
+    state = repository.set_two_step(
         user_id,
         payload.enabled,
         verification_token=payload.verification_token,
         require_verification=settings.require_sensitive_action_otp,
     )
+    send_account_alert(
+        state,
+        subject="Indo Account two-step protection changed",
+        heading=f"Two-step protection turned {'on' if payload.enabled else 'off'}",
+        message=f"Recovery email OTP protection was turned {'on' if payload.enabled else 'off'} for your Indo Account.",
+        preference=None,
+    )
+    return state
 
 
 @app.post("/api/v1/me/password", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
@@ -512,7 +603,58 @@ def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(cur
         )
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+    send_account_alert(
+        repository.get_account_state(user_id),
+        subject="Your Indo Account password changed",
+        heading="Password changed",
+        message="Your Indo Account password was updated successfully.",
+        preference=None,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.post("/api/v1/me/export")
+def export_me(payload: AccountExport, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    exported = repository.export_account_data(user_id, payload.verification_token)
+    send_account_alert(
+        repository.get_account_state(user_id),
+        subject="Your Indo Account data was downloaded",
+        heading="Account data downloaded",
+        message="A secure JSON copy of your Indo Account data was downloaded.",
+        preference=None,
+    )
+    return exported
+
+
+@app.post("/api/v1/me/support", status_code=201)
+def create_support_request(
+    payload: SupportRequest,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, str]:
+    state = repository.get_account_state(user_id)
+    if not settings.support_to_email:
+        raise EmailConfigurationError("Support requests are not configured yet.")
+    reference = f"INDO-{time.strftime('%Y%m%d')}-{uuid4().hex[:6].upper()}"
+    email_sender.send_support_request(
+        settings.support_to_email,
+        reference=reference,
+        user_name=str(state.get("full_name") or "Indo Account user"),
+        user_email=str(state.get("secondary_email") or ""),
+        user_id=user_id,
+        category=payload.category,
+        message=payload.message.strip(),
+    )
+    repository.record_security_event(
+        user_id,
+        "support",
+        "Support request submitted",
+        f"Support request {reference} was submitted under {payload.category}.",
+    )
+    try:
+        email_sender.send_support_confirmation(str(state.get("secondary_email") or ""), reference=reference)
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.exception("Support request succeeded but confirmation email failed")
+    return {"reference": reference, "message": "Your support request was sent."}
 
 
 @app.delete(
@@ -528,6 +670,13 @@ def sign_out_session(
         repository.revoke_session(user_id, session_id)
     except NotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    send_account_alert(
+        repository.get_account_state(user_id),
+        subject="A device was signed out of your Indo Account",
+        heading="Device signed out",
+        message="An active device session was removed from your Indo Account.",
+        preference="signin",
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -545,6 +694,14 @@ def sign_out_sessions(
         )
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+    if removed:
+        send_account_alert(
+            repository.get_account_state(user_id),
+            subject="Devices were signed out of your Indo Account",
+            heading="Device sessions removed",
+            message=f"{removed} active device session{'s were' if removed != 1 else ' was'} removed from your Indo Account.",
+            preference="signin",
+        )
     return {"removed": removed}
 
 
@@ -557,10 +714,18 @@ def delete_me(
     user_id: Annotated[str, Depends(current_user)],
     payload: AccountDelete | None = None,
 ) -> Response:
+    state = repository.get_account_state(user_id)
     repository.delete_account(
         user_id,
         verification_token=payload.verification_token if payload else None,
         require_verification=settings.require_account_delete_otp,
+    )
+    send_account_alert(
+        state,
+        subject="Your Indo Account was deleted",
+        heading="Account deleted",
+        message="Your Indo Account, sessions, lookup records, and account data were permanently deleted.",
+        preference=None,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
