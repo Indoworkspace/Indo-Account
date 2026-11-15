@@ -169,7 +169,7 @@ class DynamoAccountRepository:
                         "TableName": self.table.name,
                         "Key": self._otp_rate_key(scope, window_seconds, now),
                         "UpdateExpression": (
-                            "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                            "SET entity_type = :entity, expires_at = :expires, #ttl = :ttl "
                             "ADD request_count :one"
                         ),
                         "ConditionExpression": (
@@ -182,6 +182,7 @@ class DynamoAccountRepository:
                             ":one": 1,
                             ":request_limit": max(1, limit),
                         },
+                        "ExpressionAttributeNames": {"#ttl": "ttl"},
                     }
                 }
             )
@@ -235,7 +236,7 @@ class DynamoAccountRepository:
                     "TableName": self.table.name,
                     "Key": self._request_rate_key("PUBLIC", scope, window_seconds, now),
                     "UpdateExpression": (
-                        "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                        "SET entity_type = :entity, expires_at = :expires, #ttl = :ttl "
                         "ADD request_count :one"
                     ),
                     "ConditionExpression": (
@@ -248,6 +249,7 @@ class DynamoAccountRepository:
                         ":one": 1,
                         ":request_limit": limit,
                     },
+                    "ExpressionAttributeNames": {"#ttl": "ttl"},
                 }
             }
             for scope, limit in limits
@@ -1222,7 +1224,7 @@ class DynamoAccountRepository:
                     "TableName": self.table.name,
                     "Key": key,
                     "UpdateExpression": (
-                        "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                        "SET entity_type = :entity, expires_at = :expires, #ttl = :ttl "
                         "ADD request_count :one"
                     ),
                     "ConditionExpression": (
@@ -1235,6 +1237,7 @@ class DynamoAccountRepository:
                         ":one": 1,
                         ":request_limit": limit,
                     },
+                    "ExpressionAttributeNames": {"#ttl": "ttl"},
                 }
             }
             for key, limit in entries
