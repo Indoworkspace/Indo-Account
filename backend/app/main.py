@@ -18,7 +18,7 @@ from .repository import (
     OtpError,
     OtpRateLimitError,
 )
-from .security import new_otp_code, otp_digest
+from .security import challenge_digest, new_otp_code, otp_digest
 
 
 def build_repository() -> DynamoAccountRepository:
@@ -36,7 +36,7 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.2.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.3.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -74,6 +74,28 @@ class LoginRequest(BaseModel):
     identifier: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=64)
     device: str = Field(default="Web browser", max_length=120)
+
+
+class PasswordResetRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=254)
+
+
+class PasswordResetVerify(BaseModel):
+    identifier: str = Field(min_length=3, max_length=254)
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class PasswordResetComplete(BaseModel):
+    reset_token: str = Field(min_length=32, max_length=512)
+    new_password: str = Field(min_length=8, max_length=64)
+
+    @field_validator("new_password")
+    @classmethod
+    def strong_password(cls, value: str) -> str:
+        tests = (any(c.islower() for c in value), any(c.isupper() for c in value), any(c.isdigit() for c in value), any(not c.isalnum() for c in value))
+        if not all(tests):
+            raise ValueError("Password must include uppercase, lowercase, number, and symbol.")
+        return value
 
 
 class ProfileUpdate(BaseModel):
@@ -222,6 +244,76 @@ def login(payload: LoginRequest) -> dict[str, Any]:
         return {"token": token, "profile": profile}
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+
+
+def password_reset_request_response(*, resend_after: int | None = None) -> dict[str, Any]:
+    return {
+        "message": "If the account is registered, a verification code was sent to its recovery email.",
+        "expires_in": settings.otp_ttl_seconds,
+        "resend_after": resend_after or settings.otp_resend_seconds,
+    }
+
+
+@app.post("/api/v1/auth/password-reset/request", status_code=202)
+def request_password_reset(payload: PasswordResetRequest) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+
+    target = repository.password_reset_target(payload.identifier)
+    if not target:
+        # Keep the public response identical so account existence is not disclosed.
+        challenge_digest(
+            "password_reset",
+            payload.identifier.strip().lower(),
+            new_otp_code(),
+            settings.otp_hash_secret,
+        )
+        return password_reset_request_response()
+
+    user_id, email = target
+    code = new_otp_code()
+    code_hash = challenge_digest("password_reset", user_id, code, settings.otp_hash_secret)
+    now = int(time.time())
+    try:
+        repository.store_password_reset_otp(
+            user_id,
+            email,
+            code_hash,
+            expires_at=now + settings.otp_ttl_seconds,
+            resend_after=now + settings.otp_resend_seconds,
+        )
+    except OtpRateLimitError as error:
+        return password_reset_request_response(resend_after=error.retry_after)
+
+    try:
+        email_sender.send_password_reset_otp(email, code)
+    except (EmailConfigurationError, EmailDeliveryError):
+        repository.discard_password_reset_otp(user_id, code_hash)
+        return password_reset_request_response()
+    return password_reset_request_response()
+
+
+@app.post("/api/v1/auth/password-reset/verify")
+def verify_password_reset(payload: PasswordResetVerify) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    target = repository.password_reset_target(payload.identifier)
+    if not target:
+        raise OtpError("This verification code has expired. Request a new code.")
+    user_id, _email = target
+    code_hash = challenge_digest("password_reset", user_id, payload.code, settings.otp_hash_secret)
+    reset_token = repository.verify_password_reset_otp(user_id, code_hash)
+    return {"reset_token": reset_token, "expires_in": settings.otp_verification_seconds}
+
+
+@app.post(
+    "/api/v1/auth/password-reset/complete",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def complete_password_reset(payload: PasswordResetComplete) -> Response:
+    repository.complete_password_reset(payload.reset_token, payload.new_password)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.post("/api/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)

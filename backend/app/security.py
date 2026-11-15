@@ -47,7 +47,11 @@ def new_otp_code() -> str:
 
 
 def otp_digest(email: str, code: str, secret: str) -> str:
-    message = f"signup:{email.strip().lower()}:{code}".encode()
+    return challenge_digest("signup", email.strip().lower(), code, secret)
+
+
+def challenge_digest(purpose: str, subject: str, code: str, secret: str) -> str:
+    message = f"{purpose}:{subject}:{code}".encode()
     return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
 
 

@@ -67,3 +67,12 @@ The Lambda execution role also needs `ses:SendEmail` for the verified
 `eyemail.in` SES identity. SES production access is required before sending to
 unverified recipient addresses.
 
+## Password reset
+
+The public password-reset flow uses the same SES sender and OTP controls as
+signup. The request response is intentionally identical for registered and
+unknown identifiers, so it does not reveal whether an Indo ID, email address,
+or mobile number exists. A correct OTP creates a short-lived, one-time reset
+token. Completing the reset atomically changes the password, consumes the
+token, records a security event, and revokes every existing session.
+

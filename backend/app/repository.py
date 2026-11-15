@@ -91,6 +91,14 @@ class DynamoAccountRepository:
         return {"PK": f"VERIFY#SIGNUP#{token_digest(token)}", "SK": "EMAIL"}
 
     @staticmethod
+    def _password_reset_otp_key(user_id: str) -> dict[str, str]:
+        return {"PK": f"OTP#PASSWORD_RESET#{token_digest(user_id)}", "SK": "CHALLENGE"}
+
+    @staticmethod
+    def _password_reset_verification_key(token: str) -> dict[str, str]:
+        return {"PK": f"VERIFY#PASSWORD_RESET#{token_digest(token)}", "SK": "USER"}
+
+    @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in item.items() if key not in {"PK", "SK", "password_hash"}}
 
@@ -232,6 +240,210 @@ class DynamoAccountRepository:
         ):
             raise OtpError("Verify your recovery email again before creating the account.")
         return key
+
+    def password_reset_target(self, identifier: str) -> tuple[str, str] | None:
+        user_id = self.find_user_id(identifier)
+        if not user_id:
+            return None
+        profile = self.table.get_item(
+            Key=self._profile_key(user_id),
+            ConsistentRead=True,
+        ).get("Item")
+        if not profile or not profile.get("secondary_email_verified"):
+            return None
+        email = str(profile.get("secondary_email", "")).strip().lower()
+        if not email:
+            return None
+        return user_id, email
+
+    def store_password_reset_otp(
+        self,
+        user_id: str,
+        email: str,
+        code_hash: str,
+        *,
+        expires_at: int,
+        resend_after: int,
+    ) -> None:
+        now = int(time.time())
+        key = self._password_reset_otp_key(user_id)
+        try:
+            self.table.put_item(
+                Item={
+                    **key,
+                    "entity_type": "PASSWORD_RESET_OTP",
+                    "user_id": user_id,
+                    "email": email,
+                    "code_hash": code_hash,
+                    "attempts": 0,
+                    "expires_at": expires_at,
+                    "resend_after": resend_after,
+                    "ttl": expires_at,
+                    "created_at": utc_now(),
+                },
+                ConditionExpression="attribute_not_exists(PK) OR #resend <= :now",
+                ExpressionAttributeNames={"#resend": "resend_after"},
+                ExpressionAttributeValues={":now": now},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            existing = self.table.get_item(Key=key, ConsistentRead=True).get("Item", {})
+            retry_after = int(existing.get("resend_after", now + 1)) - now
+            raise OtpRateLimitError(retry_after) from error
+
+    def discard_password_reset_otp(self, user_id: str, code_hash: str) -> None:
+        try:
+            self.table.delete_item(
+                Key=self._password_reset_otp_key(user_id),
+                ConditionExpression="code_hash = :code_hash",
+                ExpressionAttributeValues={":code_hash": code_hash},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            pass
+
+    def verify_password_reset_otp(self, user_id: str, code_hash: str) -> str:
+        key = self._password_reset_otp_key(user_id)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if not item or item.get("user_id") != user_id or int(item.get("expires_at", 0)) <= now:
+            if item:
+                self.table.delete_item(Key=key)
+            raise OtpError("This verification code has expired. Request a new code.")
+
+        attempts = int(item.get("attempts", 0))
+        if attempts >= self.otp_max_attempts:
+            self.table.delete_item(Key=key)
+            raise OtpError("Too many incorrect attempts. Request a new code.")
+
+        if not hmac.compare_digest(str(item.get("code_hash", "")), code_hash):
+            attempts += 1
+            if attempts >= self.otp_max_attempts:
+                self.table.delete_item(Key=key)
+                raise OtpError("Too many incorrect attempts. Request a new code.")
+            self.table.update_item(
+                Key=key,
+                UpdateExpression="SET attempts = :attempts",
+                ExpressionAttributeValues={":attempts": attempts},
+                ConditionExpression="attribute_exists(PK)",
+            )
+            remaining = self.otp_max_attempts - attempts
+            raise OtpError(f"The verification code is incorrect. {remaining} attempts remaining.")
+
+        reset_token = new_verification_token()
+        reset_key = self._password_reset_verification_key(reset_token)
+        reset_expires = now + self.otp_verification_seconds
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Put": {
+                            "TableName": self.table.name,
+                            "Item": {
+                                **reset_key,
+                                "entity_type": "PASSWORD_RESET_VERIFICATION",
+                                "user_id": user_id,
+                                "expires_at": reset_expires,
+                                "ttl": reset_expires,
+                                "created_at": utc_now(),
+                            },
+                            "ConditionExpression": "attribute_not_exists(PK)",
+                        }
+                    },
+                    {
+                        "Delete": {
+                            "TableName": self.table.name,
+                            "Key": key,
+                            "ConditionExpression": "code_hash = :code_hash",
+                            "ExpressionAttributeValues": {":code_hash": code_hash},
+                        }
+                    },
+                ]
+            )
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Verification could not be completed. Request a new code.") from error
+        return reset_token
+
+    def complete_password_reset(self, reset_token: str, new_password: str) -> None:
+        reset_key = self._password_reset_verification_key(reset_token)
+        verification = self.table.get_item(Key=reset_key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if not verification or int(verification.get("expires_at", 0)) <= now:
+            if verification:
+                self.table.delete_item(Key=reset_key)
+            raise OtpError("Password reset verification expired. Request a new code.")
+
+        user_id = str(verification.get("user_id", ""))
+        auth_key = self._auth_key(user_id)
+        auth = self.table.get_item(Key=auth_key, ConsistentRead=True).get("Item")
+        if not auth:
+            raise OtpError("This account is no longer available.")
+        if verify_password(new_password, auth.get("password_hash", "")):
+            raise ConflictError("Choose a password you have not used for this account.")
+
+        sessions = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": "SESSION#"},
+            ConsistentRead=True,
+        ).get("Items", [])
+        if len(sessions) > 96:
+            raise OtpError("Password reset could not be completed. Contact support.")
+
+        updated_at = utc_now()
+        event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        actions: list[dict[str, Any]] = [
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": auth_key,
+                    "UpdateExpression": "SET password_hash = :password, updated_at = :updated",
+                    "ExpressionAttributeValues": {
+                        ":password": hash_password(new_password),
+                        ":updated": updated_at,
+                    },
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            },
+            {
+                "Delete": {
+                    "TableName": self.table.name,
+                    "Key": reset_key,
+                    "ConditionExpression": "user_id = :user_id AND expires_at > :now",
+                    "ExpressionAttributeValues": {":user_id": user_id, ":now": now},
+                }
+            },
+            {
+                "Put": {
+                    "TableName": self.table.name,
+                    "Item": {
+                        **event_key,
+                        "entity_type": "SECURITY_EVENT",
+                        "id": event_key["SK"].removeprefix("EVENT#"),
+                        "type": "password",
+                        "title": "Password reset",
+                        "detail": "Your password was reset using recovery email verification. All devices were signed out.",
+                        "created_at": updated_at,
+                    },
+                    "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                }
+            },
+        ]
+        actions.extend(
+            {
+                "Delete": {
+                    "TableName": self.table.name,
+                    "Key": {"PK": item["PK"], "SK": item["SK"]},
+                }
+            }
+            for item in sessions
+        )
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Password reset could not be completed. Request a new code.") from error
 
     def create_account(
         self,
