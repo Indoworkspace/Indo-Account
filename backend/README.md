@@ -54,11 +54,22 @@ OTP_TTL_SECONDS=600
 OTP_RESEND_SECONDS=60
 OTP_VERIFICATION_SECONDS=900
 OTP_MAX_ATTEMPTS=5
+OTP_RATE_WINDOW_SECONDS=900
+OTP_TARGET_WINDOW_LIMIT=3
+OTP_TARGET_DAILY_LIMIT=10
+OTP_IP_WINDOW_LIMIT=10
+OTP_IP_DAILY_LIMIT=50
 REQUIRE_SIGNUP_EMAIL_OTP=true
 REQUIRE_SENSITIVE_ACTION_OTP=true
 REQUIRE_ACCOUNT_DELETE_OTP=true
 SUPPORT_TO_EMAIL=<private support inbox receiving authenticated requests>
 ```
+
+All signup, password-reset, recovery-email and security-action OTP requests use
+durable DynamoDB rate limits. Each target is limited to 3 requests per 15
+minutes and 10 per day. A source IP is limited to 10 requests per 15 minutes
+and 50 per day across all OTP flows. Rate-limit keys contain hashes rather than
+email addresses or IP addresses and expire automatically through DynamoDB TTL.
 
 For a zero-downtime rollout, deploy the OTP endpoints with
 `REQUIRE_SIGNUP_EMAIL_OTP=false`, publish the matching frontend, and then set

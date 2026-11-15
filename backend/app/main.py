@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 import boto3
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -40,7 +40,7 @@ email_sender = SesEmailSender(
     from_email=settings.otp_from_email,
 )
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Indo Account API", version="0.8.1", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.9.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -260,8 +260,13 @@ async def not_found_handler(_request, error: NotFoundError):
 
 
 @app.exception_handler(OtpRateLimitError)
-async def otp_rate_limit_handler(_request, error: OtpRateLimitError):
+async def otp_rate_limit_handler(request: Request, error: OtpRateLimitError):
     from fastapi.responses import JSONResponse
+    logger.warning(
+        "OTP request rate limited path=%s retry_after=%s",
+        request.url.path,
+        error.retry_after,
+    )
     return JSONResponse(
         status_code=429,
         content={"detail": str(error), "retry_after": error.retry_after},
@@ -290,14 +295,35 @@ async def email_delivery_handler(_request, error: EmailDeliveryError):
 @app.get("/health")
 def health() -> dict[str, Any]:
     details = repository.table_status()
-    return {"service": "indo-account-api", "ok": details["status"] == "ACTIVE", "dynamodb": details}
+    return {
+        "service": "indo-account-api",
+        "version": app.version,
+        "ok": details["status"] == "ACTIVE",
+        "dynamodb": details,
+    }
+
+
+def enforce_otp_request_limits(request: Request, flow: str, subject: str) -> None:
+    client_ip = request.client.host if request.client else "unknown"
+    repository.enforce_otp_request_limits(
+        flow,
+        subject.strip().lower(),
+        client_ip,
+        now=int(time.time()),
+        short_window_seconds=settings.otp_rate_window_seconds,
+        target_short_limit=settings.otp_target_window_limit,
+        target_daily_limit=settings.otp_target_daily_limit,
+        ip_short_limit=settings.otp_ip_window_limit,
+        ip_daily_limit=settings.otp_ip_daily_limit,
+    )
 
 
 @app.post("/api/v1/auth/email-otp/request", status_code=202)
-def request_email_otp(payload: EmailOtpRequest) -> dict[str, Any]:
+def request_email_otp(payload: EmailOtpRequest, request: Request) -> dict[str, Any]:
     if len(settings.otp_hash_secret) < 32:
         raise EmailConfigurationError("Email verification is not configured yet.")
     email = str(payload.email).strip().lower()
+    enforce_otp_request_limits(request, "signup", email)
     if repository.email_registered(email):
         raise ConflictError("This recovery email is already registered.")
 
@@ -379,11 +405,16 @@ def password_reset_request_response(*, resend_after: int | None = None) -> dict[
 
 
 @app.post("/api/v1/auth/password-reset/request", status_code=202)
-def request_password_reset(payload: PasswordResetRequest) -> dict[str, Any]:
+def request_password_reset(payload: PasswordResetRequest, request: Request) -> dict[str, Any]:
     if len(settings.otp_hash_secret) < 32:
         raise EmailConfigurationError("Email verification is not configured yet.")
 
     target = repository.password_reset_target(payload.identifier)
+    rate_subject = target[0] if target else payload.identifier.strip().lower()
+    try:
+        enforce_otp_request_limits(request, "password_reset", rate_subject)
+    except OtpRateLimitError as error:
+        return password_reset_request_response(resend_after=error.retry_after)
     if not target:
         # Keep the public response identical so account existence is not disclosed.
         challenge_digest(
@@ -487,11 +518,13 @@ def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_us
 @app.post("/api/v1/me/recovery-email/request", status_code=202)
 def request_recovery_email_otp(
     payload: RecoveryEmailOtpRequest,
+    request: Request,
     user_id: Annotated[str, Depends(current_user)],
 ) -> dict[str, Any]:
     if len(settings.otp_hash_secret) < 32:
         raise EmailConfigurationError("Email verification is not configured yet.")
     email = repository.recovery_email_target(user_id, str(payload.email))
+    enforce_otp_request_limits(request, "recovery_email", user_id)
     code = new_otp_code()
     code_hash = challenge_digest("recovery_email", f"{user_id}:{email}", code, settings.otp_hash_secret)
     now = int(time.time())
@@ -550,10 +583,12 @@ def verify_recovery_email_otp(
 @app.post("/api/v1/me/security-otp/request", status_code=202)
 def request_security_otp(
     payload: SecurityOtpRequest,
+    request: Request,
     user_id: Annotated[str, Depends(current_user)],
 ) -> dict[str, Any]:
     if len(settings.otp_hash_secret) < 32:
         raise EmailConfigurationError("Email verification is not configured yet.")
+    enforce_otp_request_limits(request, "security_action", user_id)
     email = repository.security_otp_target(user_id)
     code = new_otp_code()
     code_hash = challenge_digest(

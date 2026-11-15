@@ -35,7 +35,7 @@ class OtpError(Exception):
 
 class OtpRateLimitError(OtpError):
     def __init__(self, retry_after: int):
-        super().__init__("Wait before requesting another verification code.")
+        super().__init__("Too many verification code requests. Try again later.")
         self.retry_after = max(1, retry_after)
 
 
@@ -112,6 +112,79 @@ class DynamoAccountRepository:
     @staticmethod
     def _security_verification_key(token: str) -> dict[str, str]:
         return {"PK": f"VERIFY#SECURITY#{token_digest(token)}", "SK": "ACTION"}
+
+    @staticmethod
+    def _otp_rate_key(scope: str, window_seconds: int, now: int) -> dict[str, str]:
+        bucket = now // window_seconds
+        return {
+            "PK": f"RATE#OTP#{token_digest(scope)}",
+            "SK": f"WINDOW#{window_seconds}#{bucket}",
+        }
+
+    def enforce_otp_request_limits(
+        self,
+        flow: str,
+        subject: str,
+        client_ip: str,
+        *,
+        now: int,
+        short_window_seconds: int,
+        target_short_limit: int,
+        target_daily_limit: int,
+        ip_short_limit: int,
+        ip_daily_limit: int,
+    ) -> None:
+        day_seconds = 86_400
+        short_window_seconds = max(60, short_window_seconds)
+        limits = (
+            (f"{flow}:target:{subject}", short_window_seconds, target_short_limit),
+            (f"{flow}:target:{subject}", day_seconds, target_daily_limit),
+            (f"ip:{client_ip}", short_window_seconds, ip_short_limit),
+            (f"ip:{client_ip}", day_seconds, ip_daily_limit),
+        )
+        actions = []
+        for scope, window_seconds, limit in limits:
+            window_end = ((now // window_seconds) + 1) * window_seconds
+            actions.append(
+                {
+                    "Update": {
+                        "TableName": self.table.name,
+                        "Key": self._otp_rate_key(scope, window_seconds, now),
+                        "UpdateExpression": (
+                            "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                            "ADD request_count :one"
+                        ),
+                        "ConditionExpression": (
+                            "attribute_not_exists(request_count) OR request_count < :request_limit"
+                        ),
+                        "ExpressionAttributeValues": {
+                            ":entity": "OTP_REQUEST_RATE_LIMIT",
+                            ":expires": window_end,
+                            ":ttl": window_end + day_seconds,
+                            ":one": 1,
+                            ":request_limit": max(1, limit),
+                        },
+                    }
+                }
+            )
+
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            reasons = (getattr(error, "response", {}) or {}).get("CancellationReasons") or []
+            blocked_windows = [
+                window_seconds
+                for reason, (_scope, window_seconds, _limit) in zip(reasons, limits)
+                if reason.get("Code") == "ConditionalCheckFailed"
+            ]
+            if not blocked_windows:
+                blocked_windows = [short_window_seconds]
+            retry_after = max(
+                ((now // window_seconds) + 1) * window_seconds - now
+                for window_seconds in blocked_windows
+            )
+            raise OtpRateLimitError(retry_after) from error
 
     @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
