@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import hmac
 import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from .security import hash_password, new_session_token, token_digest, verify_password
+from .security import hash_password, new_session_token, new_verification_token, token_digest, verify_password
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,16 @@ class NotFoundError(Exception):
     pass
 
 
+class OtpError(Exception):
+    pass
+
+
+class OtpRateLimitError(OtpError):
+    def __init__(self, retry_after: int):
+        super().__init__("Wait before requesting another verification code.")
+        self.retry_after = max(1, retry_after)
+
+
 class DynamoAccountRepository:
     """Single-table DynamoDB access for Indo Account.
 
@@ -46,9 +57,18 @@ class DynamoAccountRepository:
         "EYEBROWSE": {"name": "Eyebrowse Browser", "status": "Active", "connected": True, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
     }
 
-    def __init__(self, table: Any, *, session_days: int = 30):
+    def __init__(
+        self,
+        table: Any,
+        *,
+        session_days: int = 30,
+        otp_max_attempts: int = 5,
+        otp_verification_seconds: int = 900,
+    ):
         self.table = table
         self.session_seconds = session_days * 86_400
+        self.otp_max_attempts = otp_max_attempts
+        self.otp_verification_seconds = otp_verification_seconds
 
     @staticmethod
     def _profile_key(user_id: str) -> dict[str, str]:
@@ -61,6 +81,14 @@ class DynamoAccountRepository:
     @staticmethod
     def _lookup_key(kind: str, value: str) -> dict[str, str]:
         return {"PK": f"LOOKUP#{kind.upper()}#{value}", "SK": "USER"}
+
+    @staticmethod
+    def _signup_otp_key(email: str) -> dict[str, str]:
+        return {"PK": f"OTP#SIGNUP#{token_digest(email.strip().lower())}", "SK": "CHALLENGE"}
+
+    @staticmethod
+    def _signup_verification_key(token: str) -> dict[str, str]:
+        return {"PK": f"VERIFY#SIGNUP#{token_digest(token)}", "SK": "EMAIL"}
 
     @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
@@ -77,12 +105,144 @@ class DynamoAccountRepository:
             "write_capacity": description.get("ProvisionedThroughput", {}).get("WriteCapacityUnits"),
         }
 
+    def email_registered(self, email: str) -> bool:
+        normalized = email.strip().lower()
+        return bool(
+            self.table.get_item(
+                Key=self._lookup_key("EMAIL", normalized),
+                ConsistentRead=True,
+            ).get("Item")
+        )
+
+    def store_signup_otp(
+        self,
+        email: str,
+        code_hash: str,
+        *,
+        expires_at: int,
+        resend_after: int,
+    ) -> None:
+        normalized = email.strip().lower()
+        now = int(time.time())
+        key = self._signup_otp_key(normalized)
+        try:
+            self.table.put_item(
+                Item={
+                    **key,
+                    "entity_type": "SIGNUP_EMAIL_OTP",
+                    "email": normalized,
+                    "code_hash": code_hash,
+                    "attempts": 0,
+                    "expires_at": expires_at,
+                    "resend_after": resend_after,
+                    "ttl": expires_at,
+                    "created_at": utc_now(),
+                },
+                ConditionExpression="attribute_not_exists(PK) OR #resend <= :now",
+                ExpressionAttributeNames={"#resend": "resend_after"},
+                ExpressionAttributeValues={":now": now},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            existing = self.table.get_item(Key=key, ConsistentRead=True).get("Item", {})
+            retry_after = int(existing.get("resend_after", now + 1)) - now
+            raise OtpRateLimitError(retry_after) from error
+
+    def discard_signup_otp(self, email: str, code_hash: str) -> None:
+        try:
+            self.table.delete_item(
+                Key=self._signup_otp_key(email),
+                ConditionExpression="code_hash = :code_hash",
+                ExpressionAttributeValues={":code_hash": code_hash},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            pass
+
+    def verify_signup_otp(self, email: str, code_hash: str) -> str:
+        normalized = email.strip().lower()
+        key = self._signup_otp_key(normalized)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if not item or item.get("email") != normalized or int(item.get("expires_at", 0)) <= now:
+            if item:
+                self.table.delete_item(Key=key)
+            raise OtpError("This verification code has expired. Request a new code.")
+
+        attempts = int(item.get("attempts", 0))
+        if attempts >= self.otp_max_attempts:
+            self.table.delete_item(Key=key)
+            raise OtpError("Too many incorrect attempts. Request a new code.")
+
+        if not hmac.compare_digest(str(item.get("code_hash", "")), code_hash):
+            attempts += 1
+            if attempts >= self.otp_max_attempts:
+                self.table.delete_item(Key=key)
+                raise OtpError("Too many incorrect attempts. Request a new code.")
+            self.table.update_item(
+                Key=key,
+                UpdateExpression="SET attempts = :attempts",
+                ExpressionAttributeValues={":attempts": attempts},
+                ConditionExpression="attribute_exists(PK)",
+            )
+            remaining = self.otp_max_attempts - attempts
+            raise OtpError(f"The verification code is incorrect. {remaining} attempts remaining.")
+
+        verification_token = new_verification_token()
+        verification_key = self._signup_verification_key(verification_token)
+        verification_expires = now + self.otp_verification_seconds
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(
+                TransactItems=[
+                    {
+                        "Put": {
+                            "TableName": self.table.name,
+                            "Item": {
+                                **verification_key,
+                                "entity_type": "SIGNUP_EMAIL_VERIFICATION",
+                                "email": normalized,
+                                "expires_at": verification_expires,
+                                "ttl": verification_expires,
+                                "created_at": utc_now(),
+                            },
+                            "ConditionExpression": "attribute_not_exists(PK)",
+                        }
+                    },
+                    {
+                        "Delete": {
+                            "TableName": self.table.name,
+                            "Key": key,
+                            "ConditionExpression": "code_hash = :code_hash",
+                            "ExpressionAttributeValues": {":code_hash": code_hash},
+                        }
+                    },
+                ]
+            )
+        except client.exceptions.TransactionCanceledException as error:
+            raise OtpError("Verification could not be completed. Request a new code.") from error
+        return verification_token
+
+    def _validated_signup_verification(self, email: str, token: str) -> dict[str, str]:
+        normalized = email.strip().lower()
+        key = self._signup_verification_key(token)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+        if (
+            not item
+            or item.get("email") != normalized
+            or int(item.get("expires_at", 0)) <= int(time.time())
+        ):
+            raise OtpError("Verify your recovery email again before creating the account.")
+        return key
+
     def create_account(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
         user_id = f"usr_{uuid4().hex[:18]}"
         created_at = utc_now()
         handle = payload["handle"].strip().lower().removesuffix("@eyemail.in")
         eyemail = f"{handle}@eyemail.in"
         email = payload["secondary_email"].strip().lower()
+        verification_key = self._validated_signup_verification(
+            email,
+            payload["email_verification_token"],
+        )
         phone = "".join(character for character in payload["phone"] if character.isdigit())
         if phone.startswith("91") and len(phone) == 12:
             phone = phone[2:]
@@ -101,7 +261,7 @@ class DynamoAccountRepository:
             "gender": payload.get("gender") or "Prefer not to say",
             "eyemail_id": eyemail,
             "secondary_email": email,
-            "secondary_email_verified": bool(payload.get("secondary_email_verified")),
+            "secondary_email_verified": True,
             "phone": phone,
             "phone_verified": False,
             "dob": payload["dob"],
@@ -136,21 +296,39 @@ class DynamoAccountRepository:
             for kind, value in lookups
         )
         try:
-            client.transact_write_items(
-                TransactItems=[
-                    {
-                        "Put": {
-                            "TableName": self.table.name,
-                            # The client attached to a DynamoDB resource has
-                            # the document serializer registered already.
-                            # Passing AttributeValue wrappers here would
-                            # double-serialize PK/SK as maps.
-                            "Item": item,
-                            "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
-                        }
+            actions = [
+                {
+                    "Put": {
+                        "TableName": self.table.name,
+                        # The client attached to a DynamoDB resource has
+                        # the document serializer registered already.
+                        # Passing AttributeValue wrappers here would
+                        # double-serialize PK/SK as maps.
+                        "Item": item,
+                        "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
                     }
-                    for item in puts
-                ]
+                }
+                for item in puts
+            ]
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": self.table.name,
+                        "Key": verification_key,
+                        "ConditionExpression": "#email = :email AND #expires > :now",
+                        "ExpressionAttributeNames": {
+                            "#email": "email",
+                            "#expires": "expires_at",
+                        },
+                        "ExpressionAttributeValues": {
+                            ":email": email,
+                            ":now": int(time.time()),
+                        },
+                    }
+                }
+            )
+            client.transact_write_items(
+                TransactItems=actions
             )
         except client.exceptions.TransactionCanceledException as error:
             # Keep the public response generic, but retain the exact DynamoDB
@@ -167,6 +345,8 @@ class DynamoAccountRepository:
                     for reason in reasons
                 ],
             )
+            if reasons and reasons[-1].get("Code") == "ConditionalCheckFailed":
+                raise OtpError("Verify your recovery email again before creating the account.") from error
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))

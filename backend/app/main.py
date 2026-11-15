@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Annotated, Any
 
 import boto3
@@ -8,16 +9,43 @@ from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .config import settings
-from .repository import AuthenticationError, ConflictError, DynamoAccountRepository, NotFoundError
+from .emailer import EmailConfigurationError, EmailDeliveryError, SesEmailSender
+from .repository import (
+    AuthenticationError,
+    ConflictError,
+    DynamoAccountRepository,
+    NotFoundError,
+    OtpError,
+    OtpRateLimitError,
+)
+from .security import new_otp_code, otp_digest
 
 
 def build_repository() -> DynamoAccountRepository:
     resource = boto3.resource("dynamodb", region_name=settings.aws_region)
-    return DynamoAccountRepository(resource.Table(settings.table_name), session_days=settings.session_days)
+    return DynamoAccountRepository(
+        resource.Table(settings.table_name),
+        session_days=settings.session_days,
+        otp_max_attempts=settings.otp_max_attempts,
+        otp_verification_seconds=settings.otp_verification_seconds,
+    )
 
 
 repository = build_repository()
-app = FastAPI(title="Indo Account API", version="0.1.0", docs_url=None, redoc_url=None)
+email_sender = SesEmailSender(
+    boto3.client("sesv2", region_name=settings.aws_region),
+    from_email=settings.otp_from_email,
+)
+app = FastAPI(title="Indo Account API", version="0.2.0", docs_url=None, redoc_url=None)
+
+
+class EmailOtpRequest(BaseModel):
+    email: EmailStr
+
+
+class EmailOtpVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
 
 
 class SignupRequest(BaseModel):
@@ -25,7 +53,7 @@ class SignupRequest(BaseModel):
     nickname: str = Field(min_length=2, max_length=30)
     handle: str = Field(min_length=6, max_length=30, pattern=r"^[a-z0-9._]+(?:@eyemail\.in)?$")
     secondary_email: EmailStr
-    secondary_email_verified: bool = False
+    email_verification_token: str = Field(min_length=32, max_length=512)
     phone: str = Field(pattern=r"^(?:\+?91)?[6-9]\d{9}$")
     dob: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     language: str = Field(default="kn", pattern=r"^(kn|en|hi)$")
@@ -102,10 +130,80 @@ async def conflict_handler(_request, error: ConflictError):
     return JSONResponse(status_code=409, content={"detail": str(error)})
 
 
+@app.exception_handler(OtpRateLimitError)
+async def otp_rate_limit_handler(_request, error: OtpRateLimitError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(error), "retry_after": error.retry_after},
+        headers={"Retry-After": str(error.retry_after)},
+    )
+
+
+@app.exception_handler(OtpError)
+async def otp_handler(_request, error: OtpError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=400, content={"detail": str(error)})
+
+
+@app.exception_handler(EmailConfigurationError)
+async def email_configuration_handler(_request, error: EmailConfigurationError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503, content={"detail": str(error)})
+
+
+@app.exception_handler(EmailDeliveryError)
+async def email_delivery_handler(_request, error: EmailDeliveryError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503, content={"detail": str(error)})
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     details = repository.table_status()
     return {"service": "indo-account-api", "ok": details["status"] == "ACTIVE", "dynamodb": details}
+
+
+@app.post("/api/v1/auth/email-otp/request", status_code=202)
+def request_email_otp(payload: EmailOtpRequest) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    email = str(payload.email).strip().lower()
+    if repository.email_registered(email):
+        raise ConflictError("This recovery email is already registered.")
+
+    code = new_otp_code()
+    code_hash = otp_digest(email, code, settings.otp_hash_secret)
+    now = int(time.time())
+    repository.store_signup_otp(
+        email,
+        code_hash,
+        expires_at=now + settings.otp_ttl_seconds,
+        resend_after=now + settings.otp_resend_seconds,
+    )
+    try:
+        email_sender.send_signup_otp(email, code)
+    except (EmailConfigurationError, EmailDeliveryError):
+        repository.discard_signup_otp(email, code_hash)
+        raise
+    return {
+        "message": "Verification code sent.",
+        "expires_in": settings.otp_ttl_seconds,
+        "resend_after": settings.otp_resend_seconds,
+    }
+
+
+@app.post("/api/v1/auth/email-otp/verify")
+def verify_email_otp(payload: EmailOtpVerify) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    email = str(payload.email).strip().lower()
+    code_hash = otp_digest(email, payload.code, settings.otp_hash_secret)
+    verification_token = repository.verify_signup_otp(email, code_hash)
+    return {
+        "verification_token": verification_token,
+        "expires_in": settings.otp_verification_seconds,
+    }
 
 
 @app.post("/api/v1/auth/signup", status_code=201)

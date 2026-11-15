@@ -18,6 +18,12 @@ class Settings:
     aws_region: str = os.getenv("AWS_REGION", "ap-southeast-2")
     allowed_origins: tuple[str, ...] = _origins()
     session_days: int = int(os.getenv("SESSION_DAYS", "30"))
+    otp_from_email: str = os.getenv("OTP_FROM_EMAIL", "no-reply@eyemail.in")
+    otp_hash_secret: str = os.getenv("OTP_HASH_SECRET", "")
+    otp_ttl_seconds: int = int(os.getenv("OTP_TTL_SECONDS", "600"))
+    otp_resend_seconds: int = int(os.getenv("OTP_RESEND_SECONDS", "60"))
+    otp_verification_seconds: int = int(os.getenv("OTP_VERIFICATION_SECONDS", "900"))
+    otp_max_attempts: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
 
 
 settings = Settings()

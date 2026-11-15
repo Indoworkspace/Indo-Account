@@ -41,3 +41,16 @@ def new_session_token() -> str:
 def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
+
+def new_otp_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def otp_digest(email: str, code: str, secret: str) -> str:
+    message = f"signup:{email.strip().lower()}:{code}".encode()
+    return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+
+
+def new_verification_token() -> str:
+    return secrets.token_urlsafe(48)
+
