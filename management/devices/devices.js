@@ -27,4 +27,10 @@ function render(){
   $('#signout-all').onclick=()=>modal('Sign out all devices','<p>This will end every active session, including this device. You will need to sign in again.</p>',()=>{const action=$('#signout-all');action.disabled=true;action.textContent='Signing out…';Store.signoutAllDevices().then(()=>location.replace(signInPage)).catch(error=>{action.disabled=false;action.textContent='Sign out all devices';toast(error.message)})},true);
 }
 
-render();
+async function start(){
+  try{await Store.refresh()}
+  catch(error){render();toast(error.message);return}
+  render();
+}
+
+start();
