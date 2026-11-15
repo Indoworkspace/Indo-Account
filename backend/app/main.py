@@ -36,7 +36,7 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.6.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.7.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -144,7 +144,7 @@ class PasswordChange(BaseModel):
         return value
 
 
-SecurityAction = Literal["change_password", "disable_two_step"]
+SecurityAction = Literal["change_password", "disable_two_step", "delete_account"]
 
 
 class SecurityOtpRequest(BaseModel):
@@ -156,9 +156,14 @@ class SecurityOtpVerify(BaseModel):
     code: str = Field(pattern=r"^\d{6}$")
 
 
+class AccountDelete(BaseModel):
+    verification_token: str | None = Field(default=None, min_length=32, max_length=512)
+
+
 SECURITY_ACTION_LABELS = {
     "change_password": "changing your password",
     "disable_two_step": "turning off two-step protection",
+    "delete_account": "permanently deleting your Indo Account",
 }
 
 
@@ -548,8 +553,15 @@ def sign_out_sessions(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
-def delete_me(user_id: Annotated[str, Depends(current_user)]) -> Response:
-    repository.delete_account(user_id)
+def delete_me(
+    user_id: Annotated[str, Depends(current_user)],
+    payload: AccountDelete | None = None,
+) -> Response:
+    repository.delete_account(
+        user_id,
+        verification_token=payload.verification_token if payload else None,
+        require_verification=settings.require_account_delete_otp,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

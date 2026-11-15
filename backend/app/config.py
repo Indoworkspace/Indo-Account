@@ -30,6 +30,7 @@ class Settings:
     otp_max_attempts: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
     require_signup_email_otp: bool = _enabled("REQUIRE_SIGNUP_EMAIL_OTP")
     require_sensitive_action_otp: bool = _enabled("REQUIRE_SENSITIVE_ACTION_OTP")
+    require_account_delete_otp: bool = _enabled("REQUIRE_ACCOUNT_DELETE_OTP")
 
 
 settings = Settings()

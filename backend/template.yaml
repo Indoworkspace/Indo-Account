@@ -38,6 +38,7 @@ Resources:
           OTP_MAX_ATTEMPTS: '5'
           REQUIRE_SIGNUP_EMAIL_OTP: 'true'
           REQUIRE_SENSITIVE_ACTION_OTP: 'false'
+          REQUIRE_ACCOUNT_DELETE_OTP: 'false'
       Policies:
         - Version: '2012-10-17'
           Statement:

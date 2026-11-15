@@ -1304,7 +1304,13 @@ class DynamoAccountRepository:
         )
         return self.get_account_state(user_id)
 
-    def delete_account(self, user_id: str) -> None:
+    def delete_account(
+        self,
+        user_id: str,
+        *,
+        verification_token: str | None = None,
+        require_verification: bool = False,
+    ) -> None:
         partition = f"USER#{user_id}"
         response = self.table.query(
             KeyConditionExpression="PK = :pk",
@@ -1312,12 +1318,33 @@ class DynamoAccountRepository:
             ConsistentRead=True,
         )
         profile = next((item for item in response.get("Items", []) if item.get("SK") == "PROFILE"), None)
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        verification_key = None
+        if profile.get("two_step") and (require_verification or verification_token):
+            verification_key = self.validated_security_verification(
+                user_id,
+                "delete_account",
+                verification_token or "",
+            )
+            try:
+                self.table.delete_item(
+                    Key=verification_key,
+                    ConditionExpression="user_id = :user_id AND #action = :action AND expires_at > :now",
+                    ExpressionAttributeNames={"#action": "action"},
+                    ExpressionAttributeValues={
+                        ":user_id": user_id,
+                        ":action": "delete_account",
+                        ":now": int(time.time()),
+                    },
+                )
+            except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+                raise OtpError("Account deletion verification expired. Request a new code.") from error
         lookup_keys = []
-        if profile:
-            for kind, field in self.LOOKUP_FIELDS.items():
-                value = profile.get(field)
-                if value:
-                    lookup_keys.append(self._lookup_key(kind, value))
+        for kind, field in self.LOOKUP_FIELDS.items():
+            value = profile.get(field)
+            if value:
+                lookup_keys.append(self._lookup_key(kind, value))
         with self.table.batch_writer() as batch:
             for item in response.get("Items", []):
                 batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
