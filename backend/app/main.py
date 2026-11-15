@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
 import re
 import time
 from typing import Annotated, Any, Literal
+from urllib.parse import quote
 from uuid import uuid4
 
 import boto3
@@ -16,6 +20,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from .config import settings
 from .emailer import EmailConfigurationError, EmailDeliveryError, SesEmailSender
 from .repository import (
+    AppPausedError,
     AuthenticationError,
     AuthenticationRateLimitError,
     ConflictError,
@@ -23,9 +28,10 @@ from .repository import (
     NotFoundError,
     OtpError,
     OtpRateLimitError,
+    PayloadTooLargeError,
     RequestRateLimitError,
 )
-from .security import challenge_digest, new_otp_code, otp_digest
+from .security import challenge_digest, new_otp_code, new_verification_token, otp_digest, token_digest
 
 
 def build_repository() -> DynamoAccountRepository:
@@ -37,6 +43,12 @@ def build_repository() -> DynamoAccountRepository:
         session_activity_update_seconds=settings.session_activity_update_seconds,
         otp_max_attempts=settings.otp_max_attempts,
         otp_verification_seconds=settings.otp_verification_seconds,
+        app_token_days=settings.app_token_days,
+        app_code_seconds=settings.app_code_seconds,
+        app_history_limit=settings.app_history_limit,
+        app_saved_limit=settings.app_saved_limit,
+        app_box_max_bytes=settings.app_box_max_bytes,
+        app_max_sessions=settings.app_max_sessions,
     )
 
 
@@ -238,6 +250,56 @@ class SupportRequest(BaseModel):
     message: str = Field(min_length=20, max_length=2000)
 
 
+AppKey = Literal["SANKALPA", "EYESEARCH", "EYEBROWSE"]
+
+
+class AppAuthorizeRequest(BaseModel):
+    redirect: str = Field(min_length=8, max_length=200)
+    code_challenge: str = Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    state: str = Field(default="", max_length=200)
+
+
+class AppSessionExchange(BaseModel):
+    app: AppKey
+    code: str = Field(min_length=32, max_length=200)
+    code_verifier: str = Field(min_length=43, max_length=128, pattern=r"^[A-Za-z0-9._~-]+$")
+    device: str = Field(default="Indo app", max_length=120)
+
+
+class AppStatusUpdate(BaseModel):
+    status: Literal["Active", "Paused"]
+
+
+class AppPreferencesUpdate(BaseModel):
+    preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+class AppSavedCreate(BaseModel):
+    title: str = Field(default="", max_length=300)
+    url: str = Field(min_length=4, max_length=2000)
+
+
+class AppHistoryEntry(BaseModel):
+    url: str | None = Field(default=None, max_length=2000)
+    origin: str | None = Field(default=None, max_length=2000)
+    title: str | None = Field(default=None, max_length=300)
+    visited_at: str | None = Field(default=None, max_length=40)
+    visits: int | None = Field(default=None, ge=1, le=1000)
+
+
+class AppHistoryBatch(BaseModel):
+    entries: list[AppHistoryEntry] = Field(min_length=1, max_length=100)
+
+
+# Registered first-party clients. The redirect prefix must match exactly; a
+# redirect to any other scheme or host is refused.
+APP_CLIENTS = {
+    "SANKALPA": {"name": "Sankalp", "redirect_prefixes": ("sankalp://", "https://sankalp.indoworkspace.in/")},
+    "EYESEARCH": {"name": "Eyesearch Search Engine", "redirect_prefixes": ("eyesearch://", "https://eyesearch.indoworkspace.in/")},
+    "EYEBROWSE": {"name": "Eyebrowse Browser", "redirect_prefixes": ("indobrowse://",)},
+}
+
+
 SECURITY_ACTION_LABELS = {
     "change_password": "changing your password",
     "disable_two_step": "turning off two-step protection",
@@ -358,6 +420,46 @@ async def email_configuration_handler(_request, error: EmailConfigurationError):
 async def email_delivery_handler(_request, error: EmailDeliveryError):
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=503, content={"detail": str(error)})
+
+
+@app.exception_handler(PayloadTooLargeError)
+async def payload_too_large_handler(_request, error: PayloadTooLargeError):
+    return JSONResponse(status_code=413, content={"detail": str(error)})
+
+
+@app.exception_handler(AppPausedError)
+async def app_paused_handler(_request, error: AppPausedError):
+    return JSONResponse(status_code=403, content={"detail": str(error)})
+
+
+def pkce_challenge(verifier: str) -> str:
+    digest = hashlib.sha256(verifier.encode()).digest()
+    return base64.urlsafe_b64encode(digest).decode().rstrip("=")
+
+
+def app_session(authorization: Annotated[str | None, Header()] = None) -> tuple[str, str, str]:
+    credential = bearer_token(authorization)
+    try:
+        return repository.user_from_app_token(credential)
+    except AuthenticationError as error:
+        if credential.count(".") == 1:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "This endpoint requires an app session, not an account session.",
+            ) from error
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+
+
+def enforce_app_rate_limit(request: Request, user_id: str, app: str, *, write: bool) -> None:
+    repository.enforce_public_request_limits(
+        "app_write" if write else "app_read",
+        f"{app}:{user_id}",
+        request_client_ip(request),
+        now=int(time.time()),
+        window_seconds=settings.app_request_window_seconds,
+        subject_limit=settings.app_write_limit if write else settings.app_request_limit,
+        ip_limit=max(settings.app_request_limit * 3, 120),
+    )
 
 
 @app.get("/health")
@@ -905,5 +1007,253 @@ def delete_me(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-handler = Mangum(app, lifespan="off")
+# ---------------------------------------------------------------------------
+# App data — panel surface (authenticated with the account session)
+# ---------------------------------------------------------------------------
 
+
+@app.get("/api/v1/me/apps")
+def list_apps(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return {"apps": repository.list_app_boxes(user_id)}
+
+
+@app.get("/api/v1/me/apps/{app}")
+def get_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.get_app_box(user_id, app)
+
+
+@app.patch("/api/v1/me/apps/{app}")
+def update_app_status(
+    app: AppKey,
+    payload: AppStatusUpdate,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    return repository.set_app_status(user_id, app, payload.status)
+
+
+@app.post("/api/v1/me/apps/{app}/authorize", status_code=201)
+def authorize_app(
+    app: AppKey,
+    payload: AppAuthorizeRequest,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    client = APP_CLIENTS[app]
+    if not payload.redirect.startswith(client["redirect_prefixes"]):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That redirect address is not registered for this app.")
+    code = new_verification_token()
+    repository.create_app_code(user_id, app, token_digest(code), payload.code_challenge)
+    separator = "&" if "?" in payload.redirect else "?"
+    return {
+        "redirect_url": f"{payload.redirect}{separator}code={quote(code)}&state={quote(payload.state)}",
+        "expires_in": settings.app_code_seconds,
+        "app": {"key": app, "name": client["name"]},
+    }
+
+
+@app.delete(
+    "/api/v1/me/apps/{app}/sessions",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def revoke_app_access(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> Response:
+    repository.revoke_app_sessions(user_id, app)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete(
+    "/api/v1/me/apps/{app}/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def revoke_one_app_session(
+    app: AppKey,
+    session_id: str,
+    user_id: Annotated[str, Depends(current_user)],
+) -> Response:
+    repository.revoke_app_sessions(user_id, app, session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete("/api/v1/me/apps/{app}/data")
+def clear_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.clear_app_data(user_id, app)
+
+
+@app.get("/api/v1/me/apps/{app}/export")
+def export_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.export_app_box(user_id, app)
+
+
+# ---------------------------------------------------------------------------
+# App data — app surface (authenticated with an app-scoped token)
+#
+# The app key comes from the token itself, never from the path, so an app
+# cannot even name another app's box.
+# ---------------------------------------------------------------------------
+
+
+def identity_block(state: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "user_id": state.get("user_id"),
+        "indo_id": state.get("eyemail_id"),
+        "full_name": state.get("full_name"),
+        "nickname": state.get("nickname"),
+        "language": state.get("language"),
+    }
+
+
+@app.post("/api/v1/app/session", status_code=201)
+def exchange_app_code(payload: AppSessionExchange, request: Request) -> dict[str, Any]:
+    repository.enforce_public_request_limits(
+        "app_session",
+        payload.app,
+        request_client_ip(request),
+        now=int(time.time()),
+        window_seconds=settings.otp_rate_window_seconds,
+        subject_limit=settings.otp_target_window_limit * 4,
+        ip_limit=settings.otp_ip_window_limit * 2,
+    )
+    record = repository.consume_app_code(payload.app, token_digest(payload.code))
+    if not hmac.compare_digest(str(record.get("code_challenge", "")), pkce_challenge(payload.code_verifier)):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This sign-in request could not be verified.")
+    user_id = str(record["user_id"])
+    issued = repository.issue_app_token(user_id, payload.app, payload.device)
+    state = repository.get_account_state(user_id)
+    return {
+        "token": issued["token"],
+        "expires_in": issued["expires_in"],
+        "session_id": issued["session_id"],
+        "app": {"key": payload.app, "name": APP_CLIENTS[payload.app]["name"]},
+        "identity": identity_block(state),
+    }
+
+
+@app.get("/api/v1/app/me")
+def app_me(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    return identity_block(repository.get_account_state(user_id))
+
+
+@app.get("/api/v1/app/state")
+def app_state(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    box = repository.get_app_box(user_id, app)
+    return {
+        "key": box["key"],
+        "name": box["name"],
+        "status": box["status"],
+        "connected": box["connected"],
+        "connected_at": box.get("connected_at"),
+        "last_used_at": box.get("last_used_at"),
+        "preferences": box.get("preferences", {}),
+        "counts": box["counts"],
+    }
+
+
+@app.patch("/api/v1/app/preferences")
+def app_preferences(
+    payload: AppPreferencesUpdate,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.update_app_preferences(user_id, app, payload.preferences)
+
+
+@app.get("/api/v1/app/saved")
+def app_saved(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+    limit: int = 50,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    return repository.list_app_saved(user_id, app, limit=limit, cursor=cursor)
+
+
+@app.post("/api/v1/app/saved", status_code=201)
+def app_add_saved(
+    payload: AppSavedCreate,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.add_app_saved(user_id, app, payload.title, payload.url)
+
+
+@app.delete("/api/v1/app/saved/{item_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def app_delete_saved(
+    item_id: str,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> Response:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    repository.delete_app_saved(user_id, app, item_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/v1/app/history")
+def app_history(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+    limit: int = 50,
+    cursor: str | None = None,
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    return repository.list_app_history(user_id, app, limit=limit, cursor=cursor)
+
+
+@app.post("/api/v1/app/history", status_code=202)
+def app_add_history(
+    payload: AppHistoryBatch,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.add_app_history(user_id, app, [entry.model_dump() for entry in payload.entries])
+
+
+@app.delete("/api/v1/app/history")
+def app_clear_history(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.clear_app_history(user_id, app)
+
+
+@app.delete("/api/v1/app/data")
+def app_clear_data(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.clear_app_data(user_id, app)
+
+
+@app.post("/api/v1/app/logout", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+def app_logout(
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> Response:
+    user_id, app, session_id = session
+    repository.revoke_app_sessions(user_id, app, session_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+handler = Mangum(app, lifespan="off")
