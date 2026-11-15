@@ -36,7 +36,7 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.3.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.4.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -44,6 +44,15 @@ class EmailOtpRequest(BaseModel):
 
 
 class EmailOtpVerify(BaseModel):
+    email: EmailStr
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class RecoveryEmailOtpRequest(BaseModel):
+    email: EmailStr
+
+
+class RecoveryEmailOtpVerify(BaseModel):
     email: EmailStr
     code: str = Field(pattern=r"^\d{6}$")
 
@@ -333,6 +342,53 @@ def me(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
 @app.patch("/api/v1/me")
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     return repository.update_profile(user_id, payload.model_dump(exclude_none=True))
+
+
+@app.post("/api/v1/me/recovery-email/request", status_code=202)
+def request_recovery_email_otp(
+    payload: RecoveryEmailOtpRequest,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    email = repository.recovery_email_target(user_id, str(payload.email))
+    code = new_otp_code()
+    code_hash = challenge_digest("recovery_email", f"{user_id}:{email}", code, settings.otp_hash_secret)
+    now = int(time.time())
+    repository.store_recovery_email_otp(
+        user_id,
+        email,
+        code_hash,
+        expires_at=now + settings.otp_ttl_seconds,
+        resend_after=now + settings.otp_resend_seconds,
+    )
+    try:
+        email_sender.send_recovery_email_otp(email, code)
+    except (EmailConfigurationError, EmailDeliveryError):
+        repository.discard_recovery_email_otp(user_id, code_hash)
+        raise
+    return {
+        "message": "Verification code sent.",
+        "expires_in": settings.otp_ttl_seconds,
+        "resend_after": settings.otp_resend_seconds,
+    }
+
+
+@app.post("/api/v1/me/recovery-email/verify")
+def verify_recovery_email_otp(
+    payload: RecoveryEmailOtpVerify,
+    user_id: Annotated[str, Depends(current_user)],
+) -> dict[str, Any]:
+    if len(settings.otp_hash_secret) < 32:
+        raise EmailConfigurationError("Email verification is not configured yet.")
+    email = str(payload.email).strip().lower()
+    code_hash = challenge_digest(
+        "recovery_email",
+        f"{user_id}:{email}",
+        payload.code,
+        settings.otp_hash_secret,
+    )
+    return repository.verify_recovery_email_otp(user_id, email, code_hash)
 
 
 @app.patch("/api/v1/me/state")

@@ -99,6 +99,10 @@ class DynamoAccountRepository:
         return {"PK": f"VERIFY#PASSWORD_RESET#{token_digest(token)}", "SK": "USER"}
 
     @staticmethod
+    def _recovery_email_otp_key(user_id: str) -> dict[str, str]:
+        return {"PK": f"OTP#RECOVERY_EMAIL#{token_digest(user_id)}", "SK": "CHALLENGE"}
+
+    @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in item.items() if key not in {"PK", "SK", "password_hash"}}
 
@@ -121,6 +125,197 @@ class DynamoAccountRepository:
                 ConsistentRead=True,
             ).get("Item")
         )
+
+    def recovery_email_target(self, user_id: str, email: str) -> str:
+        normalized = email.strip().lower()
+        profile = self.table.get_item(
+            Key=self._profile_key(user_id),
+            ConsistentRead=True,
+        ).get("Item")
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        if normalized == str(profile.get("secondary_email", "")).strip().lower():
+            raise ConflictError("This recovery email is already verified on your account.")
+        if self.email_registered(normalized):
+            raise ConflictError("This recovery email is already registered.")
+        return normalized
+
+    def store_recovery_email_otp(
+        self,
+        user_id: str,
+        email: str,
+        code_hash: str,
+        *,
+        expires_at: int,
+        resend_after: int,
+    ) -> None:
+        now = int(time.time())
+        key = self._recovery_email_otp_key(user_id)
+        try:
+            self.table.put_item(
+                Item={
+                    **key,
+                    "entity_type": "RECOVERY_EMAIL_OTP",
+                    "user_id": user_id,
+                    "email": email,
+                    "code_hash": code_hash,
+                    "attempts": 0,
+                    "expires_at": expires_at,
+                    "resend_after": resend_after,
+                    "ttl": expires_at,
+                    "created_at": utc_now(),
+                },
+                ConditionExpression="attribute_not_exists(PK) OR #resend <= :now",
+                ExpressionAttributeNames={"#resend": "resend_after"},
+                ExpressionAttributeValues={":now": now},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            existing = self.table.get_item(Key=key, ConsistentRead=True).get("Item", {})
+            retry_after = int(existing.get("resend_after", now + 1)) - now
+            raise OtpRateLimitError(retry_after) from error
+
+    def discard_recovery_email_otp(self, user_id: str, code_hash: str) -> None:
+        try:
+            self.table.delete_item(
+                Key=self._recovery_email_otp_key(user_id),
+                ConditionExpression="code_hash = :code_hash",
+                ExpressionAttributeValues={":code_hash": code_hash},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException:
+            pass
+
+    def verify_recovery_email_otp(self, user_id: str, email: str, code_hash: str) -> dict[str, Any]:
+        normalized = email.strip().lower()
+        challenge_key = self._recovery_email_otp_key(user_id)
+        challenge = self.table.get_item(Key=challenge_key, ConsistentRead=True).get("Item")
+        now = int(time.time())
+        if (
+            not challenge
+            or challenge.get("user_id") != user_id
+            or challenge.get("email") != normalized
+            or int(challenge.get("expires_at", 0)) <= now
+        ):
+            if challenge:
+                self.table.delete_item(Key=challenge_key)
+            raise OtpError("This verification code has expired. Request a new code.")
+
+        attempts = int(challenge.get("attempts", 0))
+        if attempts >= self.otp_max_attempts:
+            self.table.delete_item(Key=challenge_key)
+            raise OtpError("Too many incorrect attempts. Request a new code.")
+        if not hmac.compare_digest(str(challenge.get("code_hash", "")), code_hash):
+            attempts += 1
+            if attempts >= self.otp_max_attempts:
+                self.table.delete_item(Key=challenge_key)
+                raise OtpError("Too many incorrect attempts. Request a new code.")
+            self.table.update_item(
+                Key=challenge_key,
+                UpdateExpression="SET attempts = :attempts",
+                ExpressionAttributeValues={":attempts": attempts},
+                ConditionExpression="attribute_exists(PK)",
+            )
+            remaining = self.otp_max_attempts - attempts
+            raise OtpError(f"The verification code is incorrect. {remaining} attempts remaining.")
+
+        profile_key = self._profile_key(user_id)
+        profile = self.table.get_item(Key=profile_key, ConsistentRead=True).get("Item")
+        if not profile:
+            raise NotFoundError("Account was not found.")
+        old_email = str(profile.get("secondary_email", "")).strip().lower()
+        if normalized == old_email:
+            self.table.delete_item(Key=challenge_key)
+            raise ConflictError("This recovery email is already verified on your account.")
+        if self.email_registered(normalized):
+            raise ConflictError("This recovery email is already registered.")
+
+        old_lookup = self.table.get_item(
+            Key=self._lookup_key("EMAIL", old_email),
+            ConsistentRead=True,
+        ).get("Item") if old_email else None
+        if old_lookup and old_lookup.get("user_id") != user_id:
+            raise OtpError("Recovery email could not be updated. Contact support.")
+
+        updated_at = utc_now()
+        event_key = {
+            "PK": f"USER#{user_id}",
+            "SK": f"EVENT#{int(time.time() * 1000)}#{uuid4().hex[:10]}",
+        }
+        actions: list[dict[str, Any]] = [
+            {
+                "Put": {
+                    "TableName": self.table.name,
+                    "Item": {
+                        **self._lookup_key("EMAIL", normalized),
+                        "entity_type": "IDENTITY_LOOKUP",
+                        "user_id": user_id,
+                        "created_at": updated_at,
+                    },
+                    "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                }
+            },
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": profile_key,
+                    "UpdateExpression": "SET secondary_email = :email, secondary_email_verified = :verified, updated_at = :updated",
+                    "ConditionExpression": "secondary_email = :old_email",
+                    "ExpressionAttributeValues": {
+                        ":email": normalized,
+                        ":verified": True,
+                        ":updated": updated_at,
+                        ":old_email": old_email,
+                    },
+                }
+            },
+            {
+                "Delete": {
+                    "TableName": self.table.name,
+                    "Key": challenge_key,
+                    "ConditionExpression": "code_hash = :code_hash AND #email = :email AND expires_at > :now",
+                    "ExpressionAttributeNames": {"#email": "email"},
+                    "ExpressionAttributeValues": {
+                        ":code_hash": code_hash,
+                        ":email": normalized,
+                        ":now": now,
+                    },
+                }
+            },
+            {
+                "Put": {
+                    "TableName": self.table.name,
+                    "Item": {
+                        **event_key,
+                        "entity_type": "SECURITY_EVENT",
+                        "id": event_key["SK"].removeprefix("EVENT#"),
+                        "type": "recovery",
+                        "title": "Recovery email updated",
+                        "detail": "Your recovery email was verified and updated.",
+                        "created_at": updated_at,
+                    },
+                    "ConditionExpression": "attribute_not_exists(PK) AND attribute_not_exists(SK)",
+                }
+            },
+        ]
+        if old_lookup:
+            actions.append(
+                {
+                    "Delete": {
+                        "TableName": self.table.name,
+                        "Key": self._lookup_key("EMAIL", old_email),
+                        "ConditionExpression": "user_id = :user_id",
+                        "ExpressionAttributeValues": {":user_id": user_id},
+                    }
+                }
+            )
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            reasons = (getattr(error, "response", {}) or {}).get("CancellationReasons") or []
+            if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                raise ConflictError("This recovery email is already registered.") from error
+            raise OtpError("Recovery email could not be updated. Request a new code.") from error
+        return self.get_account_state(user_id)
 
     def store_signup_otp(
         self,

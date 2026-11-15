@@ -1,5 +1,5 @@
 import {Store as BaseStore} from './store.js?v=20261114-0800';
-import {Api} from './api-client.js?v=20261115-otp1';
+import {Api} from './api-client.js?v=20261115-recovery1';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
@@ -43,6 +43,8 @@ Store.current=()=>{const current=activeUser(read());if(Api.hasSession())return c
 Store.refresh=async()=>{if(!Api.hasSession())return Store.current();return mirrorRemote(await Api.me())};
 Store.signout=()=>{if(Api.hasSession())Api.logout().catch(()=>{});clearBrowserSession()};
 Store.update=async changes=>{if(!Api.hasSession())return localUpdate(changes);return mirrorRemote(await Api.update(changes))};
+Store.requestRecoveryEmailOtp=email=>Api.requestRecoveryEmailOtp(email);
+Store.verifyRecoveryEmailOtp=async(email,code)=>mirrorRemote(await Api.verifyRecoveryEmailOtp(email,code));
 Store.updateAddress=async(key,value)=>{if(!Api.hasSession())return localUpdateAddress(key,value);const normalized=localUpdateAddress(key,value);return Api.update({[key]:normalized}).then(user=>{mirrorRemote(user);return normalized})};
 Store.setTwoStep=async enabled=>{if(!Api.hasSession())return localSetTwoStep(enabled);mirrorRemote(await Api.setTwoStep(enabled));return!!enabled};
 Store.changePassword=async(currentPassword,value)=>{if(!Api.hasSession())return localChangePassword(currentPassword,value);await Api.changePassword(currentPassword,value);return true};

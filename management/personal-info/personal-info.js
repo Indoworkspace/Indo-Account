@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261114-2200';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261115-recovery1';
 
 const u=user();
 const iconFiles={
@@ -37,7 +37,7 @@ style.textContent=`
   .inline-editor-head b{font-size:15px}
   .inline-editor .field{margin:0}.inline-editor-actions{display:flex;justify-content:flex-end;gap:10px}.inline-editor-actions .primary{width:auto;margin:0;min-width:110px}
   .photo-editor-body{display:grid;grid-template-columns:88px minmax(0,1fr);gap:18px;align-items:center}.photo-preview{width:84px;height:84px;display:grid;place-items:center;border-radius:50%;overflow:hidden;background:linear-gradient(145deg,#8d62e4,#7350cc);color:#fff;font-size:24px;font-weight:800;box-shadow:0 0 0 4px #e9deff}.photo-tools{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.photo-tools label{display:inline-block;cursor:pointer}.photo-tools input{position:absolute;inline-size:1px;block-size:1px;opacity:0;pointer-events:none}.photo-note{margin:9px 0 0;color:#607087;font-size:12px}.photo-remove[hidden]{display:none}
-  .contact-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:end}.contact-input-wrap{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:stretch}.contact-prefix{display:grid;place-items:center;padding:0 12px;border:1px solid #cbd3df;border-right:0;border-radius:10px 0 0 10px;background:#f1f4f8;color:#526177;font-weight:700}.contact-input-wrap input{border-radius:0 10px 10px 0!important}.send-otp{height:44px;white-space:nowrap}.send-otp:disabled,.otp-stage button:disabled{cursor:not-allowed;opacity:.5}.contact-hint{min-height:18px;margin:3px 0 0;color:#607087;font-size:12px}.contact-hint.error,.otp-message.error{color:#bc1d1d}.otp-stage{display:grid;gap:10px;padding:14px;border:1px solid #d9e3f3;border-radius:12px;background:#fff}.otp-stage[hidden]{display:none}.test-otp{margin:0;padding:9px 11px;border-radius:9px;background:#fff6dc;color:#735400;font-size:12px}.otp-entry{display:grid;grid-template-columns:minmax(0,220px) auto;gap:9px;align-items:end}.otp-entry input{letter-spacing:.25em;font-size:18px;font-weight:750}.otp-message{min-height:18px;margin:0;color:#607087;font-size:12px}.resend-otp{white-space:nowrap}
+  .contact-entry{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:end}.contact-input-wrap{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:stretch}.contact-prefix{display:grid;place-items:center;padding:0 12px;border:1px solid #cbd3df;border-right:0;border-radius:10px 0 0 10px;background:#f1f4f8;color:#526177;font-weight:700}.contact-input-wrap input{border-radius:0 10px 10px 0!important}.send-otp{height:44px;white-space:nowrap}.send-otp:disabled,.otp-stage button:disabled{cursor:not-allowed;opacity:.5}.contact-hint{min-height:18px;margin:3px 0 0;color:#607087;font-size:12px}.contact-hint.error,.otp-message.error{color:#bc1d1d}.otp-stage{display:grid;gap:10px;padding:14px;border:1px solid #d9e3f3;border-radius:12px;background:#fff}.otp-stage[hidden]{display:none}.otp-entry{display:grid;grid-template-columns:minmax(0,220px) auto;gap:9px;align-items:end}.otp-entry input{letter-spacing:.25em;font-size:18px;font-weight:750}.otp-message{min-height:18px;margin:0;color:#607087;font-size:12px}.resend-otp{white-space:nowrap}.contact-unavailable{margin:0;padding:12px 14px;border-radius:10px;background:#fff6dc;color:#735400;font-size:13px;line-height:1.5}
   .address-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}.address-grid .field{margin:0 0 12px}.address-grid .wide{grid-column:1/-1}.editor-note{margin:0;color:#607087;font-size:12px}
   @media(max-width:760px){.info-icon{width:29px;height:29px}.info-icon img{width:18px;height:18px}.row-photo{width:40px;height:40px}.profile-photo-row{grid-template-columns:44px minmax(0,1fr) auto}.inline-editor{padding:14px 12px}.inline-editor-actions{display:grid;grid-template-columns:1fr 1fr}.inline-editor-actions .primary{width:100%;min-width:0}.inline-editor .field input,.inline-editor .field select{font-size:16px}.photo-editor-body{grid-template-columns:68px minmax(0,1fr);gap:13px}.photo-preview{width:64px;height:64px;font-size:19px}.photo-tools{align-items:stretch}.photo-tools label,.photo-tools button{font-size:12px;padding:10px 11px}.contact-entry{grid-template-columns:1fr}.send-otp{width:100%}.otp-entry{grid-template-columns:minmax(0,1fr) auto}.resend-otp{padding-inline:10px;font-size:12px}.address-grid{grid-template-columns:1fr}.address-grid .wide{grid-column:auto}}
 `;
@@ -48,40 +48,45 @@ function clearEditor(){activeEditorCleanup();activeEditorCleanup=()=>{};document
 
 function renderContactEditor(key,button){
   clearEditor();
-  const isEmail=key==='secondary_email',type=isEmail?'email':'phone',label=isEmail?'Recovery email':'Mobile number',verifiedKey=isEmail?'secondary_email_verified':'phone_verified';
-  const normalize=value=>isEmail?value.trim().toLowerCase():value.replace(/\D/g,'').slice(-10);
-  const valid=value=>isEmail?/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value):/^[6-9]\d{9}$/.test(value);
+  const isEmail=key==='secondary_email';
   const editor=document.createElement('div');editor.className='inline-editor contact-editor';
-  const inputControl=isEmail?`<input id="contact-value" type="email" autocomplete="email" value="${esc(u.secondary_email||'')}" placeholder="name@example.com">`:`<div class="contact-input-wrap"><span class="contact-prefix">+91</span><input id="contact-value" type="tel" inputmode="numeric" maxlength="10" autocomplete="tel" value="${esc(u.phone||'')}" placeholder="10-digit mobile number"></div>`;
-  editor.innerHTML=`<div class="inline-editor-head"><b>Verify new ${label.toLowerCase()}</b></div><div class="contact-entry"><div class="field"><label for="contact-value">${label}</label>${inputControl}<p class="contact-hint" aria-live="polite"></p></div><button class="secondary send-otp" type="button" disabled>Send OTP</button></div><div class="otp-stage" hidden><p class="test-otp" aria-live="polite"></p><div class="otp-entry"><div class="field"><label for="contact-otp">6-digit OTP</label><input id="contact-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div><button class="secondary resend-otp" type="button" disabled>Resend OTP</button></div><p class="otp-message" aria-live="polite">Enter the OTP shown above for frontend testing.</p></div><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary verify-contact" type="button" disabled>Verify</button></div>`;
+  if(!isEmail){
+    editor.innerHTML=`<div class="inline-editor-head"><b>Mobile number verification</b></div><p class="contact-unavailable">Secure SMS verification is not available yet. Your current number will stay unchanged until production SMS delivery is enabled.</p><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button></div>`;
+    button.insertAdjacentElement('afterend',editor);editor.querySelector('[data-close]').onclick=clearEditor;return;
+  }
+  const normalize=value=>value.trim().toLowerCase(),valid=value=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+  editor.innerHTML=`<div class="inline-editor-head"><b>Verify new recovery email</b></div><div class="contact-entry"><div class="field"><label for="contact-value">Recovery email</label><input id="contact-value" type="email" autocomplete="email" value="${esc(u.secondary_email||'')}" placeholder="name@example.com"><p class="contact-hint" aria-live="polite"></p></div><button class="secondary send-otp" type="button" disabled>Send OTP</button></div><div class="otp-stage" hidden><div class="otp-entry"><div class="field"><label for="contact-otp">6-digit OTP</label><input id="contact-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000"></div><button class="secondary resend-otp" type="button" disabled>Resend OTP</button></div><p class="otp-message" aria-live="polite">Enter the code sent to your new recovery email.</p></div><div class="inline-editor-actions"><button class="secondary" type="button" data-close>Cancel</button><button class="primary verify-contact" type="button" disabled>Verify & save</button></div>`;
   button.insertAdjacentElement('afterend',editor);
-  const input=editor.querySelector('#contact-value'),hint=editor.querySelector('.contact-hint'),send=editor.querySelector('.send-otp'),stage=editor.querySelector('.otp-stage'),testOtp=editor.querySelector('.test-otp'),otpInput=editor.querySelector('#contact-otp'),otpMessage=editor.querySelector('.otp-message'),resend=editor.querySelector('.resend-otp'),verify=editor.querySelector('.verify-contact');
-  let code='',sentValue='',timer=null,seconds=0;
+  const input=editor.querySelector('#contact-value'),hint=editor.querySelector('.contact-hint'),send=editor.querySelector('.send-otp'),stage=editor.querySelector('.otp-stage'),otpInput=editor.querySelector('#contact-otp'),otpMessage=editor.querySelector('.otp-message'),resend=editor.querySelector('.resend-otp'),verify=editor.querySelector('.verify-contact');
+  let sentValue='',timer=null,seconds=0,busy=false;
   const stopTimer=()=>{if(timer)clearInterval(timer);timer=null};
   activeEditorCleanup=stopTimer;
   const updateTimer=()=>{resend.disabled=seconds>0;resend.textContent=seconds>0?`Resend in ${seconds}s`:'Resend OTP'};
-  const startTimer=()=>{stopTimer();seconds=30;updateTimer();timer=setInterval(()=>{seconds-=1;updateTimer();if(seconds<=0)stopTimer()},1000)};
+  const startTimer=(duration=60)=>{stopTimer();seconds=duration;updateTimer();timer=setInterval(()=>{seconds-=1;updateTimer();if(seconds<=0)stopTimer()},1000)};
   const updateInputState=()=>{
-    if(!isEmail){const digits=input.value.replace(/\D/g,'').slice(0,10);if(input.value!==digits)input.value=digits}
-    const value=normalize(input.value),isValid=valid(value),sameVerified=value===normalize(u[key]||'')&&!!u[verifiedKey];
-    if(sentValue&&value!==sentValue){sentValue='';code='';stage.hidden=true;stopTimer();otpInput.value='';verify.disabled=true}
-    send.disabled=!isValid||sameVerified||value===sentValue;
+    const value=normalize(input.value),isValid=valid(value),sameVerified=value===normalize(u.secondary_email||'')&&!!u.secondary_email_verified;
+    if(sentValue&&value!==sentValue){sentValue='';stage.hidden=true;stopTimer();otpInput.value='';verify.disabled=true}
+    send.disabled=busy||!isValid||sameVerified||value===sentValue;
     send.textContent=value===sentValue&&sentValue?'OTP sent':'Send OTP';
     hint.classList.remove('error');
-    hint.textContent=!value?`Enter your ${label.toLowerCase()}.`:!isValid?(isEmail?'Enter a valid email address.':'Enter a valid 10-digit Indian mobile number.'):sameVerified?`This ${label.toLowerCase()} is already verified.`:'Ready to send OTP.';
+    hint.textContent=!value?'Enter your new recovery email.':!isValid?'Enter a valid email address.':sameVerified?'This recovery email is already verified.':'We will send a 6-digit code to this address.';
   };
-  const sendOtp=()=>{
+  const sendOtp=async()=>{
     const value=normalize(input.value);if(!valid(value))return updateInputState();
-    if(!Store.contactAvailable(type,value)){hint.textContent=`This ${label.toLowerCase()} is already registered.`;hint.classList.add('error');return}
-    const random=crypto.getRandomValues(new Uint32Array(1))[0];code=String(100000+(random%900000));sentValue=value;
-    stage.hidden=false;testOtp.textContent=`Frontend test mode — OTP: ${code}`;otpInput.value='';otpMessage.textContent=`OTP prepared for ${isEmail?value:`+91 ${value}`}.`;otpMessage.classList.remove('error');verify.disabled=true;send.disabled=true;send.textContent='OTP sent';startTimer();otpInput.focus();
+    busy=true;send.disabled=true;send.textContent='Sending…';hint.classList.remove('error');hint.textContent='Sending verification code…';
+    try{const result=await Store.requestRecoveryEmailOtp(value);sentValue=value;stage.hidden=false;otpInput.value='';otpMessage.textContent=`Enter the code sent to ${value}.`;otpMessage.classList.remove('error');verify.disabled=true;send.textContent='OTP sent';startTimer(Number(result.resend_after)||60);otpInput.focus()}
+    catch(error){hint.textContent=error.message;hint.classList.add('error');send.textContent='Send OTP'}
+    finally{busy=false;updateInputState()}
   };
   input.addEventListener('input',updateInputState);
   send.onclick=sendOtp;resend.onclick=sendOtp;
-  otpInput.oninput=()=>{otpInput.value=otpInput.value.replace(/\D/g,'').slice(0,6);verify.disabled=otpInput.value.length!==6;otpMessage.textContent='Enter the OTP shown above for frontend testing.';otpMessage.classList.remove('error')};
-  verify.onclick=()=>{
-    if(!code||otpInput.value!==code){otpMessage.textContent='Incorrect OTP. Check the 6-digit code and try again.';otpMessage.classList.add('error');return}
-    try{const saved=Store.updateVerifiedContact(type,sentValue);u[key]=saved;u[verifiedKey]=true;button.querySelector('small').textContent=isEmail?saved:`+91 ${saved}`;const state=button.querySelector('.verification-state');state.textContent='Verified';state.className='verification-state verified';clearEditor();toast(`${label} verified and saved.`)}catch(error){otpMessage.textContent=error.message;otpMessage.classList.add('error')}
+  otpInput.oninput=()=>{otpInput.value=otpInput.value.replace(/\D/g,'').slice(0,6);verify.disabled=busy||otpInput.value.length!==6;otpMessage.textContent=`Enter the code sent to ${sentValue}.`;otpMessage.classList.remove('error')};
+  verify.onclick=async()=>{
+    if(!sentValue||otpInput.value.length!==6)return;
+    busy=true;verify.disabled=true;verify.textContent='Verifying…';otpMessage.classList.remove('error');
+    try{const saved=await Store.verifyRecoveryEmailOtp(sentValue,otpInput.value);Object.assign(u,saved);button.querySelector('small').textContent=u.secondary_email;const state=button.querySelector('.verification-state');state.textContent='Verified';state.className='verification-state verified';clearEditor();toast('Recovery email verified and saved.')}
+    catch(error){otpMessage.textContent=error.message;otpMessage.classList.add('error');verify.textContent='Verify & save'}
+    finally{busy=false;if(document.body.contains(verify))verify.disabled=otpInput.value.length!==6}
   };
   editor.querySelector('[data-close]').onclick=clearEditor;
   updateInputState();input.focus();

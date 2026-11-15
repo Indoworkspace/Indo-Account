@@ -89,3 +89,13 @@ class SesEmailSender:
             introduction="Use this code to reset your Indo Account password:",
             failure_message="Password reset email could not be sent. Try again shortly.",
         )
+
+    def send_recovery_email_otp(self, destination: str, code: str) -> None:
+        self._send_otp(
+            destination,
+            code,
+            subject="Verify your new Indo Account recovery email",
+            heading="Verify your new recovery email",
+            introduction="Use this code to confirm your new Indo Account recovery email:",
+            failure_message="Recovery email verification could not be sent. Try again shortly.",
+        )
