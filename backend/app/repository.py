@@ -11,6 +11,7 @@ from .security import hash_password, new_session_token, new_verification_token, 
 
 
 logger = logging.getLogger(__name__)
+DUMMY_PASSWORD_HASH = "pbkdf2_sha256$600000$SW5kb0FjY291bnREdW1teQ==$VTRGin763QpbCrYX73_o1pn4omMz-J4ZOzlXfzOAvSE="
 
 
 def utc_now() -> str:
@@ -23,6 +24,19 @@ class ConflictError(Exception):
 
 class AuthenticationError(Exception):
     pass
+
+
+class RequestRateLimitError(Exception):
+    def __init__(self, retry_after: int, message: str = "Too many requests. Try again later."):
+        super().__init__(message)
+        self.retry_after = max(1, retry_after)
+
+
+class AuthenticationRateLimitError(RequestRateLimitError, AuthenticationError):
+    def __init__(self, retry_after: int, *, user_id: str | None = None, newly_blocked: bool = False):
+        super().__init__(retry_after, "Too many sign-in attempts. Try again later.")
+        self.user_id = user_id
+        self.newly_blocked = newly_blocked
 
 
 class NotFoundError(Exception):
@@ -62,11 +76,15 @@ class DynamoAccountRepository:
         table: Any,
         *,
         session_days: int = 30,
+        session_max_active: int = 10,
+        session_activity_update_seconds: int = 300,
         otp_max_attempts: int = 5,
         otp_verification_seconds: int = 900,
     ):
         self.table = table
         self.session_seconds = session_days * 86_400
+        self.session_max_active = max(1, session_max_active)
+        self.session_activity_update_seconds = max(60, session_activity_update_seconds)
         self.otp_max_attempts = otp_max_attempts
         self.otp_verification_seconds = otp_verification_seconds
 
@@ -185,6 +203,61 @@ class DynamoAccountRepository:
                 for window_seconds in blocked_windows
             )
             raise OtpRateLimitError(retry_after) from error
+
+    @staticmethod
+    def _request_rate_key(category: str, scope: str, window_seconds: int, now: int) -> dict[str, str]:
+        bucket = now // window_seconds
+        return {
+            "PK": f"RATE#{category.upper()}#{token_digest(scope)}",
+            "SK": f"WINDOW#{window_seconds}#{bucket}",
+        }
+
+    def enforce_public_request_limits(
+        self,
+        feature: str,
+        subject: str,
+        client_ip: str,
+        *,
+        now: int,
+        window_seconds: int,
+        subject_limit: int,
+        ip_limit: int,
+    ) -> None:
+        window_seconds = max(60, window_seconds)
+        window_end = ((now // window_seconds) + 1) * window_seconds
+        limits = (
+            (f"{feature}:target:{subject}", max(1, subject_limit)),
+            (f"{feature}:ip:{client_ip}", max(1, ip_limit)),
+        )
+        actions = [
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": self._request_rate_key("PUBLIC", scope, window_seconds, now),
+                    "UpdateExpression": (
+                        "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                        "ADD request_count :one"
+                    ),
+                    "ConditionExpression": (
+                        "attribute_not_exists(request_count) OR request_count < :request_limit"
+                    ),
+                    "ExpressionAttributeValues": {
+                        ":entity": "PUBLIC_REQUEST_RATE_LIMIT",
+                        ":expires": window_end,
+                        ":ttl": window_end + 86_400,
+                        ":one": 1,
+                        ":request_limit": limit,
+                    },
+                }
+            }
+            for scope, limit in limits
+        ]
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            retry_after = window_end - now
+            raise RequestRateLimitError(retry_after) from error
 
     @staticmethod
     def _public(item: dict[str, Any]) -> dict[str, Any]:
@@ -1054,25 +1127,202 @@ class DynamoAccountRepository:
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))
         return self.get_account_state(user_id, current_token=token), token
 
-    def find_user_id(self, identifier: str) -> str | None:
+    @staticmethod
+    def normalize_identifier(identifier: str) -> str:
         value = identifier.strip().lower()
+        if "@" in value:
+            return value
+        value = "".join(character for character in value if character.isdigit())
+        if value.startswith("91") and len(value) == 12:
+            value = value[2:]
+        return value
+
+    def find_user_id(self, identifier: str) -> str | None:
+        value = self.normalize_identifier(identifier)
         if "@" in value:
             kind = "EYEMAIL" if value.endswith("@eyemail.in") else "EMAIL"
         else:
             kind = "PHONE"
-            value = "".join(character for character in value if character.isdigit())
-            if value.startswith("91") and len(value) == 12:
-                value = value[2:]
         item = self.table.get_item(Key=self._lookup_key(kind, value), ConsistentRead=True).get("Item")
         return item.get("user_id") if item else None
 
-    def authenticate(self, identifier: str, password: str, device: str) -> tuple[dict[str, Any], str]:
+    def _login_rate_entries(
+        self,
+        subject: str,
+        client_ip: str,
+        *,
+        now: int,
+        window_seconds: int,
+        account_limit: int,
+        ip_limit: int,
+    ) -> tuple[tuple[dict[str, str], int], ...]:
+        return (
+            (
+                self._request_rate_key("LOGIN", f"account:{subject}", window_seconds, now),
+                max(1, account_limit),
+            ),
+            (
+                self._request_rate_key("LOGIN", f"ip:{client_ip}", window_seconds, now),
+                max(1, ip_limit),
+            ),
+        )
+
+    def _ensure_login_allowed(
+        self,
+        subject: str,
+        client_ip: str,
+        *,
+        user_id: str | None,
+        now: int,
+        window_seconds: int,
+        account_limit: int,
+        ip_limit: int,
+    ) -> None:
+        window_seconds = max(60, window_seconds)
+        entries = self._login_rate_entries(
+            subject,
+            client_ip,
+            now=now,
+            window_seconds=window_seconds,
+            account_limit=account_limit,
+            ip_limit=ip_limit,
+        )
+        blocked = any(
+            int(self.table.get_item(Key=key, ConsistentRead=True).get("Item", {}).get("request_count", 0)) >= limit
+            for key, limit in entries
+        )
+        if blocked:
+            window_end = ((now // window_seconds) + 1) * window_seconds
+            raise AuthenticationRateLimitError(window_end - now, user_id=user_id)
+
+    def _record_login_failure(
+        self,
+        subject: str,
+        client_ip: str,
+        *,
+        user_id: str | None,
+        now: int,
+        window_seconds: int,
+        account_limit: int,
+        ip_limit: int,
+    ) -> None:
+        window_seconds = max(60, window_seconds)
+        window_end = ((now // window_seconds) + 1) * window_seconds
+        entries = self._login_rate_entries(
+            subject,
+            client_ip,
+            now=now,
+            window_seconds=window_seconds,
+            account_limit=account_limit,
+            ip_limit=ip_limit,
+        )
+        actions = [
+            {
+                "Update": {
+                    "TableName": self.table.name,
+                    "Key": key,
+                    "UpdateExpression": (
+                        "SET entity_type = :entity, expires_at = :expires, ttl = :ttl "
+                        "ADD request_count :one"
+                    ),
+                    "ConditionExpression": (
+                        "attribute_not_exists(request_count) OR request_count < :request_limit"
+                    ),
+                    "ExpressionAttributeValues": {
+                        ":entity": "LOGIN_FAILURE_RATE_LIMIT",
+                        ":expires": window_end,
+                        ":ttl": window_end + 86_400,
+                        ":one": 1,
+                        ":request_limit": limit,
+                    },
+                }
+            }
+            for key, limit in entries
+        ]
+        client = self.table.meta.client
+        try:
+            client.transact_write_items(TransactItems=actions)
+        except client.exceptions.TransactionCanceledException as error:
+            raise AuthenticationRateLimitError(window_end - now, user_id=user_id) from error
+
+        counts = [
+            int(self.table.get_item(Key=key, ConsistentRead=True).get("Item", {}).get("request_count", 0))
+            for key, _limit in entries
+        ]
+        blocked = any(count >= limit for count, (_key, limit) in zip(counts, entries))
+        if blocked:
+            account_blocked = counts[0] >= entries[0][1]
+            if user_id and account_blocked:
+                self.record_security_event(
+                    user_id,
+                    "signin_blocked",
+                    "Suspicious sign-in attempts blocked",
+                    "Repeated unsuccessful sign-in attempts were temporarily blocked.",
+                )
+            raise AuthenticationRateLimitError(
+                window_end - now,
+                user_id=user_id,
+                newly_blocked=bool(user_id and account_blocked),
+            )
+
+    def authenticate(
+        self,
+        identifier: str,
+        password: str,
+        device: str,
+        *,
+        client_ip: str = "unknown",
+        now: int | None = None,
+        rate_window_seconds: int = 900,
+        account_failure_limit: int = 5,
+        ip_failure_limit: int = 20,
+    ) -> tuple[dict[str, Any], str]:
+        now = int(time.time()) if now is None else now
         user_id = self.find_user_id(identifier)
+        normalized = self.normalize_identifier(identifier)
+        subject = user_id or f"unknown:{normalized}"
+        self._ensure_login_allowed(
+            subject,
+            client_ip,
+            user_id=user_id,
+            now=now,
+            window_seconds=rate_window_seconds,
+            account_limit=account_failure_limit,
+            ip_limit=ip_failure_limit,
+        )
         if not user_id:
+            verify_password(password, DUMMY_PASSWORD_HASH)
+            self._record_login_failure(
+                subject,
+                client_ip,
+                user_id=None,
+                now=now,
+                window_seconds=rate_window_seconds,
+                account_limit=account_failure_limit,
+                ip_limit=ip_failure_limit,
+            )
             raise AuthenticationError("Identifier or password is incorrect.")
         auth = self.table.get_item(Key=self._auth_key(user_id), ConsistentRead=True).get("Item")
-        if not auth or not verify_password(password, auth.get("password_hash", "")):
+        valid_password = verify_password(password, auth.get("password_hash", "") if auth else DUMMY_PASSWORD_HASH)
+        if not auth or not valid_password:
+            self._record_login_failure(
+                subject,
+                client_ip,
+                user_id=user_id,
+                now=now,
+                window_seconds=rate_window_seconds,
+                account_limit=account_failure_limit,
+                ip_limit=ip_failure_limit,
+            )
             raise AuthenticationError("Identifier or password is incorrect.")
+
+        account_rate_key = self._request_rate_key(
+            "LOGIN",
+            f"account:{subject}",
+            max(60, rate_window_seconds),
+            now,
+        )
+        self.table.delete_item(Key=account_rate_key)
         token = self.create_bearer_session(user_id, device)
         self.record_security_event(user_id, "signin", "New sign-in", f"Your Indo Account was signed in on {device}.")
         return self.get_account_state(user_id, current_token=token), token
@@ -1081,6 +1331,21 @@ class DynamoAccountRepository:
         token = new_session_token()
         session_id = f"sess_{uuid4().hex[:18]}"
         current_epoch = int(time.time())
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": "SESSION#"},
+            ConsistentRead=True,
+        )
+        sessions = response.get("Items", [])
+        expired = [item for item in sessions if int(item.get("ttl", 0)) <= current_epoch]
+        active = [item for item in sessions if int(item.get("ttl", 0)) > current_epoch]
+        active.sort(key=lambda item: str(item.get("created_at", "")))
+        overflow = active[: max(0, len(active) - self.session_max_active + 1)]
+        stale = expired + overflow
+        if stale:
+            with self.table.batch_writer() as batch:
+                for item in stale:
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
         self.table.put_item(
             Item={
                 "PK": f"USER#{user_id}",
@@ -1092,6 +1357,7 @@ class DynamoAccountRepository:
                 "app": "Indo Account",
                 "created_at": utc_now(),
                 "last_active": utc_now(),
+                "last_active_epoch": current_epoch,
                 "ttl": current_epoch + self.session_seconds,
             }
         )
@@ -1113,6 +1379,22 @@ class DynamoAccountRepository:
         session = next((item for item in response.get("Items", []) if item.get("token_hash") == digest), None)
         if not session or int(session.get("ttl", 0)) <= int(time.time()):
             raise AuthenticationError("Session has expired.")
+        now = int(time.time())
+        if now - int(session.get("last_active_epoch", 0)) >= self.session_activity_update_seconds:
+            try:
+                self.table.update_item(
+                    Key={"PK": session["PK"], "SK": session["SK"]},
+                    UpdateExpression="SET last_active = :active, last_active_epoch = :epoch",
+                    ConditionExpression="token_hash = :digest AND ttl > :now",
+                    ExpressionAttributeValues={
+                        ":active": utc_now(),
+                        ":epoch": now,
+                        ":digest": digest,
+                        ":now": now,
+                    },
+                )
+            except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+                raise AuthenticationError("Session has expired.") from error
         return user_id
 
     def create_bearer_session(self, user_id: str, device: str) -> str:
@@ -1169,6 +1451,8 @@ class DynamoAccountRepository:
             elif sort_key == "BILLING#PROFILE":
                 billing.update(item.get("state", {}))
             elif sort_key.startswith("SESSION#"):
+                if int(item.get("ttl", 0)) <= int(time.time()):
+                    continue
                 session = self._public(item)
                 session.pop("token_hash", None)
                 session["current"] = session.get("session_id") == current_session_id

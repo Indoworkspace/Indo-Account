@@ -33,6 +33,9 @@ Resources:
           DYNAMODB_TABLE: UnifiedAppTable
           ALLOWED_ORIGINS: !Ref AllowedOrigins
           SESSION_DAYS: '30'
+          SESSION_MAX_ACTIVE: '10'
+          SESSION_ACTIVITY_UPDATE_SECONDS: '300'
+          MAX_REQUEST_BYTES: '2621440'
           OTP_FROM_EMAIL: !Ref OtpFromEmail
           SUPPORT_TO_EMAIL: !Ref SupportToEmail
           OTP_HASH_SECRET: !Ref OtpHashSecret
@@ -45,6 +48,12 @@ Resources:
           OTP_TARGET_DAILY_LIMIT: '10'
           OTP_IP_WINDOW_LIMIT: '10'
           OTP_IP_DAILY_LIMIT: '50'
+          LOGIN_RATE_WINDOW_SECONDS: '900'
+          LOGIN_ACCOUNT_FAILURE_LIMIT: '5'
+          LOGIN_IP_FAILURE_LIMIT: '20'
+          ID_RATE_WINDOW_SECONDS: '60'
+          ID_RATE_TARGET_LIMIT: '10'
+          ID_RATE_IP_LIMIT: '30'
           REQUIRE_SIGNUP_EMAIL_OTP: 'true'
           REQUIRE_SENSITIVE_ACTION_OTP: 'false'
           REQUIRE_ACCOUNT_DELETE_OTP: 'false'

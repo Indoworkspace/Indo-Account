@@ -8,6 +8,8 @@ from uuid import uuid4
 
 import boto3
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -15,11 +17,13 @@ from .config import settings
 from .emailer import EmailConfigurationError, EmailDeliveryError, SesEmailSender
 from .repository import (
     AuthenticationError,
+    AuthenticationRateLimitError,
     ConflictError,
     DynamoAccountRepository,
     NotFoundError,
     OtpError,
     OtpRateLimitError,
+    RequestRateLimitError,
 )
 from .security import challenge_digest, new_otp_code, otp_digest
 
@@ -29,6 +33,8 @@ def build_repository() -> DynamoAccountRepository:
     return DynamoAccountRepository(
         resource.Table(settings.table_name),
         session_days=settings.session_days,
+        session_max_active=settings.session_max_active,
+        session_activity_update_seconds=settings.session_activity_update_seconds,
         otp_max_attempts=settings.otp_max_attempts,
         otp_verification_seconds=settings.otp_verification_seconds,
     )
@@ -40,7 +46,38 @@ email_sender = SesEmailSender(
     from_email=settings.otp_from_email,
 )
 logger = logging.getLogger(__name__)
-app = FastAPI(title="Indo Account API", version="0.9.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="1.0.0", docs_url=None, redoc_url=None)
+
+
+def add_security_headers(response: Response) -> Response:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@app.middleware("http")
+async def api_security_middleware(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            body_size = int(content_length)
+        except ValueError:
+            return add_security_headers(JSONResponse(status_code=400, content={"detail": "Invalid Content-Length header."}))
+        if body_size > settings.max_request_bytes:
+            return add_security_headers(JSONResponse(status_code=413, content={"detail": "Request body is too large."}))
+        content_type = request.headers.get("content-type", "").lower()
+        if (
+            body_size > 0
+            and request.url.path.startswith("/api/")
+            and request.method in {"POST", "PATCH", "DELETE"}
+            and not content_type.startswith("application/json")
+        ):
+            return add_security_headers(JSONResponse(status_code=415, content={"detail": "Content-Type must be application/json."}))
+
+    response = await call_next(request)
+    return add_security_headers(response)
 
 
 class EmailOtpRequest(BaseModel):
@@ -247,6 +284,23 @@ def current_user(token: Annotated[str, Depends(bearer_token)]) -> str:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
 
 
+@app.exception_handler(RequestValidationError)
+async def validation_handler(_request: Request, error: RequestValidationError):
+    errors = error.errors()
+    malformed_json = any(item.get("type") == "json_invalid" for item in errors)
+    if malformed_json:
+        return JSONResponse(status_code=400, content={"detail": "Request body is not valid JSON."})
+    sanitized = [
+        {
+            "loc": list(item.get("loc", ())),
+            "msg": item.get("msg", "Invalid value."),
+            "type": item.get("type", "value_error"),
+        }
+        for item in errors
+    ]
+    return JSONResponse(status_code=422, content={"detail": sanitized})
+
+
 @app.exception_handler(ConflictError)
 async def conflict_handler(_request, error: ConflictError):
     from fastapi.responses import JSONResponse
@@ -264,6 +318,20 @@ async def otp_rate_limit_handler(request: Request, error: OtpRateLimitError):
     from fastapi.responses import JSONResponse
     logger.warning(
         "OTP request rate limited path=%s retry_after=%s",
+        request.url.path,
+        error.retry_after,
+    )
+    return JSONResponse(
+        status_code=429,
+        content={"detail": str(error), "retry_after": error.retry_after},
+        headers={"Retry-After": str(error.retry_after)},
+    )
+
+
+@app.exception_handler(RequestRateLimitError)
+async def request_rate_limit_handler(request: Request, error: RequestRateLimitError):
+    logger.warning(
+        "Request rate limited path=%s retry_after=%s",
         request.url.path,
         error.retry_after,
     )
@@ -303,12 +371,15 @@ def health() -> dict[str, Any]:
     }
 
 
+def request_client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
 def enforce_otp_request_limits(request: Request, flow: str, subject: str) -> None:
-    client_ip = request.client.host if request.client else "unknown"
     repository.enforce_otp_request_limits(
         flow,
         subject.strip().lower(),
-        client_ip,
+        request_client_ip(request),
         now=int(time.time()),
         short_window_seconds=settings.otp_rate_window_seconds,
         target_short_limit=settings.otp_target_window_limit,
@@ -349,8 +420,17 @@ def request_email_otp(payload: EmailOtpRequest, request: Request) -> dict[str, A
 
 
 @app.post("/api/v1/auth/indo-id/availability")
-def indo_id_availability(payload: IndoIdAvailabilityRequest) -> dict[str, Any]:
+def indo_id_availability(payload: IndoIdAvailabilityRequest, request: Request) -> dict[str, Any]:
     handle = payload.handle
+    repository.enforce_public_request_limits(
+        "indo_id_availability",
+        handle,
+        request_client_ip(request),
+        now=int(time.time()),
+        window_seconds=settings.id_rate_window_seconds,
+        subject_limit=settings.id_rate_target_limit,
+        ip_limit=settings.id_rate_ip_limit,
+    )
     return {
         "handle": handle,
         "indo_id": f"{handle}@eyemail.in",
@@ -381,9 +461,17 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
 
 
 @app.post("/api/v1/auth/login")
-def login(payload: LoginRequest) -> dict[str, Any]:
+def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
     try:
-        profile, token = repository.authenticate(payload.identifier, payload.password, payload.device)
+        profile, token = repository.authenticate(
+            payload.identifier,
+            payload.password,
+            payload.device,
+            client_ip=request_client_ip(request),
+            rate_window_seconds=settings.login_rate_window_seconds,
+            account_failure_limit=settings.login_account_failure_limit,
+            ip_failure_limit=settings.login_ip_failure_limit,
+        )
         send_account_alert(
             profile,
             subject="New sign-in to your Indo Account",
@@ -392,6 +480,19 @@ def login(payload: LoginRequest) -> dict[str, Any]:
             preference="signin",
         )
         return {"token": token, "profile": profile}
+    except AuthenticationRateLimitError as error:
+        if error.newly_blocked and error.user_id:
+            try:
+                send_account_alert(
+                    repository.get_account_state(error.user_id),
+                    subject="Suspicious sign-in attempts were blocked",
+                    heading="Sign-in attempts blocked",
+                    message="Repeated unsuccessful sign-in attempts against your Indo Account were temporarily blocked.",
+                    preference=None,
+                )
+            except (NotFoundError, AuthenticationError):
+                logger.exception("Could not send the sign-in protection alert")
+        raise
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
 

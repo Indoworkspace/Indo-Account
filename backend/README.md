@@ -59,6 +59,15 @@ OTP_TARGET_WINDOW_LIMIT=3
 OTP_TARGET_DAILY_LIMIT=10
 OTP_IP_WINDOW_LIMIT=10
 OTP_IP_DAILY_LIMIT=50
+LOGIN_RATE_WINDOW_SECONDS=900
+LOGIN_ACCOUNT_FAILURE_LIMIT=5
+LOGIN_IP_FAILURE_LIMIT=20
+ID_RATE_WINDOW_SECONDS=60
+ID_RATE_TARGET_LIMIT=10
+ID_RATE_IP_LIMIT=30
+SESSION_MAX_ACTIVE=10
+SESSION_ACTIVITY_UPDATE_SECONDS=300
+MAX_REQUEST_BYTES=2621440
 REQUIRE_SIGNUP_EMAIL_OTP=true
 REQUIRE_SENSITIVE_ACTION_OTP=true
 REQUIRE_ACCOUNT_DELETE_OTP=true
@@ -70,6 +79,18 @@ durable DynamoDB rate limits. Each target is limited to 3 requests per 15
 minutes and 10 per day. A source IP is limited to 10 requests per 15 minutes
 and 50 per day across all OTP flows. Rate-limit keys contain hashes rather than
 email addresses or IP addresses and expire automatically through DynamoDB TTL.
+
+Sign-in protection allows at most 5 failed attempts per account and 20 failed
+attempts per source IP in a 15-minute window. Responses do not reveal whether
+an identifier exists, unknown accounts perform the same password-hash work,
+and the first blocked attempt records a security event and sends one critical
+account alert. A successful sign-in clears the account-specific failure count.
+
+Indo ID availability checks are limited to 10 checks per candidate and 30 per
+source IP per minute. API JSON bodies are capped at 2.5 MiB, malformed JSON is
+rejected without echoing passwords or other submitted values, and active
+sessions are capped at 10 per account. Expired sessions are hidden immediately
+and activity timestamps are refreshed at most once every five minutes.
 
 For a zero-downtime rollout, deploy the OTP endpoints with
 `REQUIRE_SIGNUP_EMAIL_OTP=false`, publish the matching frontend, and then set
