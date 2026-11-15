@@ -31,6 +31,7 @@ function remember(result){sessionStorage.setItem(TOKEN_KEY,result.token);return 
 export const Api={
   baseUrl:API_BASE_URL,
   hasSession:()=>!!token(),
+  clearSession:()=>sessionStorage.removeItem(TOKEN_KEY),
   requestSignupOtp:email=>request('/api/v1/auth/email-otp/request',{method:'POST',authenticated:false,body:{email}}),
   verifySignupOtp:(email,code)=>request('/api/v1/auth/email-otp/verify',{method:'POST',authenticated:false,body:{email,code}}),
   requestPasswordReset:identifier=>request('/api/v1/auth/password-reset/request',{method:'POST',authenticated:false,body:{identifier}}),
@@ -46,6 +47,8 @@ export const Api={
   sync:state=>request('/api/v1/me/state',{method:'PATCH',body:state}),
   setTwoStep:enabled=>request('/api/v1/me/two-step',{method:'PATCH',body:{enabled}}),
   changePassword:(currentPassword,newPassword)=>request('/api/v1/me/password',{method:'POST',body:{current_password:currentPassword,new_password:newPassword}}),
+  signoutSession:sessionId=>request(`/api/v1/me/sessions/${encodeURIComponent(sessionId)}`,{method:'DELETE'}),
+  signoutSessions:includeCurrent=>request(`/api/v1/me/sessions?include_current=${includeCurrent?'true':'false'}`,{method:'DELETE'}),
   deleteAccount:()=>request('/api/v1/me',{method:'DELETE'})
 };
 

@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261114-2200';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261115-sessions1';
 
 const signInPage='../../Sign%20in/index.html';
 
@@ -6,7 +6,7 @@ function render(){
   const u=user();
   const formatTime=value=>{if(!value)return'Activity time unavailable';try{return `Last active ${new Date(value).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}`}catch{return'Last active recently'}};
   const ordered=[...(u.sessions||[])].sort((a,b)=>Number(b.current)-Number(a.current));
-  const sessions=ordered.map(session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app)} · ${esc(session.location||'Location unavailable')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.id)}" type="button">Sign out</button></div>`).join('');
+  const sessions=ordered.map(session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app)} · ${esc(session.location||'Location unavailable')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" type="button">Sign out</button></div>`).join('');
   setup('devices',`<h1>Devices &amp; sessions</h1><p class="lead">Review and sign out every device linked to your Indo Account.</p><article class="panel sessions-panel"><div class="section-title sessions-title"><div><h2>Active sessions</h2><p class="session-count">${ordered.length} ${ordered.length===1?'session':'sessions'} connected</p></div><button class="danger" id="signout-all" type="button" ${ordered.length?'':'disabled'}>Sign out all devices</button></div>${sessions||'<p class="form-note">No active sessions.</p>'}</article>`);
 
   document.getElementById('device-layout-style')?.remove();
@@ -20,11 +20,11 @@ function render(){
   document.head.append(style);
 
   document.querySelectorAll('.session-signout').forEach(button=>button.onclick=()=>{
-    const session=u.sessions.find(item=>item.id===button.dataset.id);
-    modal(`Sign out ${session?.current?'this device':session?.device||'device'}`,`<p>${session?.current?'You will be returned to the sign-in page.':'This session will immediately lose access to your Indo Account.'}</p>`,()=>{const signedOutHere=Store.signoutSession(button.dataset.id);if(signedOutHere){location.replace(signInPage);return}render();toast(`${session?.device||'Device'} signed out.`)},true);
+    const session=u.sessions.find(item=>(item.session_id||item.id)===button.dataset.id);
+    modal(`Sign out ${session?.current?'this device':session?.device||'device'}`,`<p>${session?.current?'You will be returned to the sign-in page.':'This session will immediately lose access to your Indo Account.'}</p>`,()=>{button.disabled=true;button.textContent='Signing out…';Store.signoutSession(button.dataset.id).then(signedOutHere=>{if(signedOutHere){location.replace(signInPage);return}render();toast(`${session?.device||'Device'} signed out.`)}).catch(error=>{button.disabled=false;button.textContent='Sign out';toast(error.message)})},true);
   });
 
-  $('#signout-all').onclick=()=>modal('Sign out all devices','<p>This will end every active session, including this device. You will need to sign in again.</p>',()=>{Store.signoutAllDevices();location.replace(signInPage)},true);
+  $('#signout-all').onclick=()=>modal('Sign out all devices','<p>This will end every active session, including this device. You will need to sign in again.</p>',()=>{const action=$('#signout-all');action.disabled=true;action.textContent='Signing out…';Store.signoutAllDevices().then(()=>location.replace(signInPage)).catch(error=>{action.disabled=false;action.textContent='Sign out all devices';toast(error.message)})},true);
 }
 
 render();

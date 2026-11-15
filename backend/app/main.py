@@ -36,7 +36,7 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
-app = FastAPI(title="Indo Account API", version="0.4.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Indo Account API", version="0.5.0", docs_url=None, redoc_url=None)
 
 
 class EmailOtpRequest(BaseModel):
@@ -332,9 +332,12 @@ def logout(token: Annotated[str, Depends(bearer_token)]) -> Response:
 
 
 @app.get("/api/v1/me")
-def me(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
     try:
-        return repository.get_account_state(user_id)
+        user_id = repository.user_from_token(token)
+        return repository.get_account_state(user_id, current_token=token)
+    except AuthenticationError as error:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
     except NotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
@@ -408,6 +411,39 @@ def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(cur
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete(
+    "/api/v1/me/sessions/{session_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def sign_out_session(
+    session_id: str,
+    user_id: Annotated[str, Depends(current_user)],
+) -> Response:
+    try:
+        repository.revoke_session(user_id, session_id)
+    except NotFoundError as error:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.delete("/api/v1/me/sessions")
+def sign_out_sessions(
+    include_current: bool,
+    token: Annotated[str, Depends(bearer_token)],
+) -> dict[str, int]:
+    try:
+        user_id = repository.user_from_token(token)
+        removed = repository.revoke_sessions(
+            user_id,
+            current_token=token,
+            include_current=include_current,
+        )
+    except AuthenticationError as error:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+    return {"removed": removed}
 
 
 @app.delete(

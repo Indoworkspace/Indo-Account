@@ -765,7 +765,7 @@ class DynamoAccountRepository:
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 
         token = self.create_bearer_session(user_id, payload.get("device", "Web browser"))
-        return self.get_account_state(user_id), token
+        return self.get_account_state(user_id, current_token=token), token
 
     def find_user_id(self, identifier: str) -> str | None:
         value = identifier.strip().lower()
@@ -787,7 +787,7 @@ class DynamoAccountRepository:
         if not auth or not verify_password(password, auth.get("password_hash", "")):
             raise AuthenticationError("Identifier or password is incorrect.")
         token = self.create_bearer_session(user_id, device)
-        return self.get_account_state(user_id), token
+        return self.get_account_state(user_id, current_token=token), token
 
     def create_session(self, user_id: str, device: str) -> str:
         token = new_session_token()
@@ -830,14 +830,33 @@ class DynamoAccountRepository:
     def create_bearer_session(self, user_id: str, device: str) -> str:
         return f"{user_id}.{self.create_session(user_id, device)}"
 
+    def current_session_id(self, user_id: str, token: str) -> str:
+        try:
+            token_user_id, opaque = token.split(".", 1)
+        except ValueError as error:
+            raise AuthenticationError("Session is invalid.") from error
+        if token_user_id != user_id:
+            raise AuthenticationError("Session is invalid.")
+        digest = token_digest(opaque)
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": "SESSION#"},
+            ConsistentRead=True,
+        )
+        session = next((item for item in response.get("Items", []) if item.get("token_hash") == digest), None)
+        if not session or int(session.get("ttl", 0)) <= int(time.time()):
+            raise AuthenticationError("Session has expired.")
+        return str(session.get("session_id") or session["SK"].removeprefix("SESSION#"))
+
     def get_profile(self, user_id: str) -> dict[str, Any]:
         item = self.table.get_item(Key=self._profile_key(user_id), ConsistentRead=True).get("Item")
         if not item:
             raise NotFoundError("Account was not found.")
         return self._public(item)
 
-    def get_account_state(self, user_id: str) -> dict[str, Any]:
+    def get_account_state(self, user_id: str, *, current_token: str | None = None) -> dict[str, Any]:
         profile = self.get_profile(user_id)
+        current_session_id = self.current_session_id(user_id, current_token) if current_token else None
         response = self.table.query(
             KeyConditionExpression="PK = :pk",
             ExpressionAttributeValues={":pk": f"USER#{user_id}"},
@@ -864,6 +883,7 @@ class DynamoAccountRepository:
             elif sort_key.startswith("SESSION#"):
                 session = self._public(item)
                 session.pop("token_hash", None)
+                session["current"] = session.get("session_id") == current_session_id
                 sessions.append(session)
             elif sort_key.startswith("CONNECTION#"):
                 connections.append(self._public(item))
@@ -881,6 +901,35 @@ class DynamoAccountRepository:
             "invoices": invoices,
             "security_events": security_events,
         }
+
+    def revoke_session(self, user_id: str, session_id: str) -> None:
+        key = {"PK": f"USER#{user_id}", "SK": f"SESSION#{session_id}"}
+        try:
+            self.table.delete_item(
+                Key=key,
+                ConditionExpression="attribute_exists(PK) AND session_id = :session_id",
+                ExpressionAttributeValues={":session_id": session_id},
+            )
+        except self.table.meta.client.exceptions.ConditionalCheckFailedException as error:
+            raise NotFoundError("This device session is no longer active.") from error
+
+    def revoke_sessions(self, user_id: str, *, current_token: str, include_current: bool) -> int:
+        current_session_id = self.current_session_id(user_id, current_token)
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :session)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":session": "SESSION#"},
+            ConsistentRead=True,
+        )
+        sessions = [
+            item
+            for item in response.get("Items", [])
+            if include_current or item.get("session_id") != current_session_id
+        ]
+        if sessions:
+            with self.table.batch_writer() as batch:
+                for item in sessions:
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+        return len(sessions)
 
     def sync_account_state(self, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         partition = f"USER#{user_id}"
