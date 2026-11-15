@@ -54,7 +54,14 @@ OTP_TTL_SECONDS=600
 OTP_RESEND_SECONDS=60
 OTP_VERIFICATION_SECONDS=900
 OTP_MAX_ATTEMPTS=5
+REQUIRE_SIGNUP_EMAIL_OTP=true
 ```
+
+For a zero-downtime rollout, deploy the OTP endpoints with
+`REQUIRE_SIGNUP_EMAIL_OTP=false`, publish the matching frontend, and then set
+the flag to `true`. When the flag is false, supplied verification tokens are
+still validated and consumed; only the legacy no-token signup path remains
+temporarily available.
 
 The Lambda execution role also needs `ses:SendEmail` for the verified
 `eyemail.in` SES identity. SES production access is required before sending to

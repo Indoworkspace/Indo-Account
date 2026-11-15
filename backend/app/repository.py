@@ -233,16 +233,23 @@ class DynamoAccountRepository:
             raise OtpError("Verify your recovery email again before creating the account.")
         return key
 
-    def create_account(self, payload: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    def create_account(
+        self,
+        payload: dict[str, Any],
+        *,
+        require_email_verification: bool = False,
+    ) -> tuple[dict[str, Any], str]:
         user_id = f"usr_{uuid4().hex[:18]}"
         created_at = utc_now()
         handle = payload["handle"].strip().lower().removesuffix("@eyemail.in")
         eyemail = f"{handle}@eyemail.in"
         email = payload["secondary_email"].strip().lower()
-        verification_key = self._validated_signup_verification(
-            email,
-            payload["email_verification_token"],
-        )
+        verification_token = payload.get("email_verification_token")
+        verification_key = None
+        if verification_token:
+            verification_key = self._validated_signup_verification(email, verification_token)
+        elif require_email_verification:
+            raise OtpError("Verify your recovery email before creating the account.")
         phone = "".join(character for character in payload["phone"] if character.isdigit())
         if phone.startswith("91") and len(phone) == 12:
             phone = phone[2:]
@@ -261,7 +268,7 @@ class DynamoAccountRepository:
             "gender": payload.get("gender") or "Prefer not to say",
             "eyemail_id": eyemail,
             "secondary_email": email,
-            "secondary_email_verified": True,
+            "secondary_email_verified": verification_key is not None,
             "phone": phone,
             "phone_verified": False,
             "dob": payload["dob"],
@@ -310,23 +317,24 @@ class DynamoAccountRepository:
                 }
                 for item in puts
             ]
-            actions.append(
-                {
-                    "Delete": {
-                        "TableName": self.table.name,
-                        "Key": verification_key,
-                        "ConditionExpression": "#email = :email AND #expires > :now",
-                        "ExpressionAttributeNames": {
-                            "#email": "email",
-                            "#expires": "expires_at",
-                        },
-                        "ExpressionAttributeValues": {
-                            ":email": email,
-                            ":now": int(time.time()),
-                        },
+            if verification_key:
+                actions.append(
+                    {
+                        "Delete": {
+                            "TableName": self.table.name,
+                            "Key": verification_key,
+                            "ConditionExpression": "#email = :email AND #expires > :now",
+                            "ExpressionAttributeNames": {
+                                "#email": "email",
+                                "#expires": "expires_at",
+                            },
+                            "ExpressionAttributeValues": {
+                                ":email": email,
+                                ":now": int(time.time()),
+                            },
+                        }
                     }
-                }
-            )
+                )
             client.transact_write_items(
                 TransactItems=actions
             )
@@ -345,7 +353,7 @@ class DynamoAccountRepository:
                     for reason in reasons
                 ],
             )
-            if reasons and reasons[-1].get("Code") == "ConditionalCheckFailed":
+            if verification_key and reasons and reasons[-1].get("Code") == "ConditionalCheckFailed":
                 raise OtpError("Verify your recovery email again before creating the account.") from error
             raise ConflictError("This Indo ID, email, or mobile number is already registered.") from error
 

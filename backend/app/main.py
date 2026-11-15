@@ -53,7 +53,7 @@ class SignupRequest(BaseModel):
     nickname: str = Field(min_length=2, max_length=30)
     handle: str = Field(min_length=6, max_length=30, pattern=r"^[a-z0-9._]+(?:@eyemail\.in)?$")
     secondary_email: EmailStr
-    email_verification_token: str = Field(min_length=32, max_length=512)
+    email_verification_token: str | None = Field(default=None, min_length=32, max_length=512)
     phone: str = Field(pattern=r"^(?:\+?91)?[6-9]\d{9}$")
     dob: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
     language: str = Field(default="kn", pattern=r"^(kn|en|hi)$")
@@ -208,7 +208,10 @@ def verify_email_otp(payload: EmailOtpVerify) -> dict[str, Any]:
 
 @app.post("/api/v1/auth/signup", status_code=201)
 def signup(payload: SignupRequest) -> dict[str, Any]:
-    profile, token = repository.create_account(payload.model_dump())
+    profile, token = repository.create_account(
+        payload.model_dump(),
+        require_email_verification=settings.require_signup_email_otp,
+    )
     return {"token": token, "profile": profile}
 
 

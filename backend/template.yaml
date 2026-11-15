@@ -36,6 +36,7 @@ Resources:
           OTP_RESEND_SECONDS: '60'
           OTP_VERIFICATION_SECONDS: '900'
           OTP_MAX_ATTEMPTS: '5'
+          REQUIRE_SIGNUP_EMAIL_OTP: 'true'
       Policies:
         - Version: '2012-10-17'
           Statement:

@@ -12,6 +12,10 @@ def _origins() -> tuple[str, ...]:
     return tuple(origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip())
 
 
+def _enabled(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     table_name: str = os.getenv("DYNAMODB_TABLE", "UnifiedAppTable")
@@ -24,6 +28,7 @@ class Settings:
     otp_resend_seconds: int = int(os.getenv("OTP_RESEND_SECONDS", "60"))
     otp_verification_seconds: int = int(os.getenv("OTP_VERIFICATION_SECONDS", "900"))
     otp_max_attempts: int = int(os.getenv("OTP_MAX_ATTEMPTS", "5"))
+    require_signup_email_otp: bool = _enabled("REQUIRE_SIGNUP_EMAIL_OTP")
 
 
 settings = Settings()
