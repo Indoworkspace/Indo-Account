@@ -1,7 +1,26 @@
 const API_BASE_URL='https://ig4s3omb7uwdfwsl64u7fhw3ta0ahxnb.lambda-url.ap-southeast-2.on.aws';
-const TOKEN_KEY='indo_api_session_token';
+const APP_TOKEN_KEY='indo_api_app_token';       // an app's own token, this tab only
+const SESSION_KEY='indo_api_session_token';     // the user's browser session
+const SESSION_AT_KEY='indo_api_session_at';
+const SESSION_DAYS=30;
 
-const token=()=>sessionStorage.getItem(TOKEN_KEY)||'';
+function dropSession(){
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_AT_KEY);
+  sessionStorage.removeItem(APP_TOKEN_KEY);
+}
+
+// The browser session survives tab close and lasts as long as the server session.
+function sessionToken(){
+  const value=localStorage.getItem(SESSION_KEY)||'';
+  if(!value)return '';
+  const issued=Number(localStorage.getItem(SESSION_AT_KEY)||0);
+  if(issued&&Date.now()-issued>SESSION_DAYS*86400000){dropSession();return ''}
+  return value;
+}
+
+const appToken=()=>sessionStorage.getItem(APP_TOKEN_KEY)||'';
+const token=()=>appToken()||sessionToken();
 const device=()=>{
   const ua=navigator.userAgent;
   const browser=/Edg\//.test(ua)?'Edge':/Firefox\//.test(ua)?'Firefox':/Chrome\//.test(ua)?'Chrome':/Safari\//.test(ua)?'Safari':'Web browser';
@@ -19,20 +38,21 @@ async function request(path,{method='GET',body,authenticated=true,keepalive=fals
   if(response.status===204)return null;
   const payload=await response.json().catch(()=>({}));
   if(!response.ok){
-    if(response.status===401&&authenticated)sessionStorage.removeItem(TOKEN_KEY);
+    if(response.status===401&&authenticated)dropSession();
     const detail=Array.isArray(payload.detail)?payload.detail.map(item=>item.msg).join(' '):payload.detail;
     throw Error(detail||`Indo Account request failed (${response.status}).`);
   }
   return payload;
 }
 
-function remember(result){sessionStorage.setItem(TOKEN_KEY,result.token);return result.profile}
+function remember(result){localStorage.setItem(SESSION_KEY,result.token);localStorage.setItem(SESSION_AT_KEY,String(Date.now()));return result.profile}
 
 export const Api={
   baseUrl:API_BASE_URL,
   hasSession:()=>!!token(),
-  setSession:value=>sessionStorage.setItem(TOKEN_KEY,value),
-  clearSession:()=>sessionStorage.removeItem(TOKEN_KEY),
+  setSession:value=>sessionStorage.setItem(APP_TOKEN_KEY,value),
+  clearSession:()=>dropSession(),
+  clearAppToken:()=>sessionStorage.removeItem(APP_TOKEN_KEY),
   checkIndoId:handle=>request('/api/v1/auth/indo-id/availability',{method:'POST',authenticated:false,body:{handle}}),
   requestSignupOtp:email=>request('/api/v1/auth/email-otp/request',{method:'POST',authenticated:false,body:{email}}),
   verifySignupOtp:(email,code)=>request('/api/v1/auth/email-otp/verify',{method:'POST',authenticated:false,body:{email,code}}),
@@ -41,7 +61,7 @@ export const Api={
   completePasswordReset:(resetToken,newPassword)=>request('/api/v1/auth/password-reset/complete',{method:'POST',authenticated:false,body:{reset_token:resetToken,new_password:newPassword}}),
   signup:input=>request('/api/v1/auth/signup',{method:'POST',authenticated:false,body:{...input,device:device()}}).then(remember),
   login:(identifier,password)=>request('/api/v1/auth/login',{method:'POST',authenticated:false,body:{identifier,password,device:device()}}).then(remember),
-  logout:async()=>{try{if(token())await request('/api/v1/auth/logout',{method:'POST',keepalive:true})}finally{sessionStorage.removeItem(TOKEN_KEY)}},
+  logout:async()=>{try{if(token())await request('/api/v1/auth/logout',{method:'POST',keepalive:true})}finally{dropSession()}},
   me:()=>request('/api/v1/me'),
   update:changes=>request('/api/v1/me',{method:'PATCH',body:changes}),
   requestRecoveryEmailOtp:email=>request('/api/v1/me/recovery-email/request',{method:'POST',body:{email}}),

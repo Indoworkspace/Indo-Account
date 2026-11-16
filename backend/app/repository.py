@@ -1559,6 +1559,45 @@ class DynamoAccountRepository:
         self.record_security_event(user_id, "privacy", "Account data downloaded", "A secure copy of your Indo Account data was downloaded.")
         return export
 
+    def revoke_all_sessions(self, user_id: str, *, keep_session_id: str | None = None) -> int:
+        """Revoke every browser session and every app session, optionally keeping one.
+
+        Used when the password or the recovery email changes: anyone holding an old
+        session must lose it, while the device making the change stays signed in.
+        """
+        removed = 0
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}"},
+            ConsistentRead=True,
+        )
+        with self.table.batch_writer() as batch:
+            for item in response.get("Items", []):
+                sort_key = str(item.get("SK", ""))
+                if sort_key.startswith("SESSION#"):
+                    if keep_session_id and sort_key == f"SESSION#{keep_session_id}":
+                        continue
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                    removed += 1
+                elif sort_key.startswith("APP#") and "#SESSION#" in sort_key:
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+                    removed += 1
+        for app in self.APP_DEFAULTS:
+            if self._app_sessions(user_id, app):
+                continue
+            box = self._app_box(user_id, app)
+            if box.get("connected"):
+                box["connected"] = False
+                self._write_app_box(user_id, app, box)
+        if removed:
+            self.record_security_event(
+                user_id,
+                "session",
+                "Other sessions signed out",
+                f"{removed} session{'s were' if removed != 1 else ' was'} signed out after a credential change.",
+            )
+        return removed
+
     def revoke_session(self, user_id: str, session_id: str) -> None:
         key = {"PK": f"USER#{user_id}", "SK": f"SESSION#{session_id}"}
         try:
