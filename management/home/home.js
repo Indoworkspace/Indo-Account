@@ -1,4 +1,5 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-logo2';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-icons1';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-icons1';
 
 const u=user();
 const apps=[
@@ -6,8 +7,8 @@ const apps=[
   ['Eyesearch','Search Engine','../apps-data/eyesearch/index.html','eye'],
   ['Eyebrowse','Browser','../apps-data/eyebrowse/index.html','browse']
 ];
-const homeIcons={security:'shield-check-duotone.svg','personal-info':'identification-card-duotone.svg',sankalp:'chat-teardrop-dots-duotone.svg','indo-connect':'plugs-connected-duotone.svg'};
-const asset=name=>`../../assets/icons/phosphor/${homeIcons[name]}`;
+const homeIcons={security:'shield','personal-info':'id',sankalp:'chat','indo-connect':'plug'};
+const asset=name=>iconSvg(homeIcons[name]||'info',22);
 const searchItems=[
   {title:'Personal info',description:'Profile, recovery contacts, language and addresses',href:'../personal-info/index.html',keywords:'name photo email mobile birthday gender address'},
   {title:'Security & sign-in',description:'Password, two-step protection and recovery',href:'../security/index.html',keywords:'password otp signin recovery protection'},
@@ -19,13 +20,13 @@ const searchItems=[
   {title:'About & account',description:'Account details and shared-data structure',href:'../account-actions/index.html',keywords:'about account user id created'}
 ];
 
-setup('home',`<div class="account-search"><label class="search-box" for="account-search"><img src="../../assets/icons/phosphor/magnifying-glass-duotone.svg" alt=""><input id="account-search" type="search" placeholder="Search Indo Account" autocomplete="off" aria-controls="account-search-results" aria-expanded="false"></label><div class="search-results hidden" id="account-search-results" role="listbox"></div></div>
+setup('home',`<div class="account-search"><label class="search-box" for="account-search">${iconSvg('search',18)}<input id="account-search" type="search" placeholder="Search Indo Account" autocomplete="off" aria-controls="account-search-results" aria-expanded="false"></label><div class="search-results hidden" id="account-search-results" role="listbox"></div></div>
 <div class="quick-actions"><a href="../security/index.html">My password</a><a href="../devices/index.html">Devices</a><a href="../apps-data/index.html">My apps</a><a href="../indo-connect/index.html">Indo Connect</a><a href="../privacy/index.html">Data &amp; privacy</a></div>
 <section class="home-section"><div class="section-title"><h2>Account overview</h2><span class="badge">Active</span></div><div class="overview-grid">
-  <a class="overview-card" href="../security/index.html"><img src="${asset('security')}" alt=""><span class="overview-copy"><b>Security &amp; sign-in</b><small>${u.two_step?'Two-step protection is on.':'Review your protection settings.'}</small></span><span class="card-arrow">›</span></a>
-  <a class="overview-card" href="../personal-info/index.html"><img src="${asset('personal-info')}" alt=""><span class="overview-copy"><b>Personal info</b><small>Profile, language, contact details and addresses.</small></span><span class="card-arrow">›</span></a>
-  <a class="overview-card" href="../apps-data/index.html"><img src="${asset('sankalp')}" alt=""><span class="overview-copy"><b>App center</b><small>Manage Sankalp, Eyesearch and Eyebrowse.</small></span><span class="card-arrow">›</span></a>
-  <a class="overview-card" href="../indo-connect/index.html"><img src="${asset('indo-connect')}" alt=""><span class="overview-copy"><b>Indo Connect</b><small>Review apps and websites using your Indo sign-in.</small></span><span class="card-arrow">›</span></a>
+  <a class="overview-card" href="../security/index.html">${asset('security')}<span class="overview-copy"><b>Security &amp; sign-in</b><small>${u.two_step?'Two-step protection is on.':'Review your protection settings.'}</small></span><span class="card-arrow">›</span></a>
+  <a class="overview-card" href="../personal-info/index.html">${asset('personal-info')}<span class="overview-copy"><b>Personal info</b><small>Profile, language, contact details and addresses.</small></span><span class="card-arrow">›</span></a>
+  <a class="overview-card" href="../apps-data/index.html">${asset('sankalp')}<span class="overview-copy"><b>App center</b><small>Manage Sankalp, Eyesearch and Eyebrowse.</small></span><span class="card-arrow">›</span></a>
+  <a class="overview-card" href="../indo-connect/index.html">${asset('indo-connect')}<span class="overview-copy"><b>Indo Connect</b><small>Review apps and websites using your Indo sign-in.</small></span><span class="card-arrow">›</span></a>
 </div></section>
 <section class="home-section"><div class="section-title"><h2>Your Indo apps</h2><a href="../apps-data/index.html">View all</a></div><div class="app-list">${apps.map(([name,description,href,kind])=>`<div class="app-card"><div class="app-badge ${kind}">${name[0]}</div><div class="app-card-copy"><h3>${esc(name)}</h3><p>${description}</p></div><a class="secondary" href="${href}">Open app space</a></div>`).join('')}</div></section>`);
 
@@ -45,7 +46,7 @@ mobileStyle.textContent=`@media(max-width:760px){
   .quick-actions a{font-size:11px}
   .home-section{padding:13px}
   .overview-card{grid-template-columns:33px minmax(0,1fr) auto;padding:10px}
-  .overview-card img{width:32px;height:32px}
+  .overview-card .ico{color:#5b6b80}
 }`;
 document.head.append(mobileStyle);
 

@@ -1,5 +1,6 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-logo2';
-import {Api} from '../../shared/api-client.js?v=20261116-logo2';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-icons1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-icons1';
+import {Api} from '../../shared/api-client.js?v=20261116-icons1';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
@@ -15,9 +16,9 @@ function render(){
     .filter(app=>app.sessions.length);
   const total=browsers.length+apps.reduce((sum,app)=>sum+app.sessions.length,0);
 
-  const browserRow=session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app||'Indo Account')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" data-current="${session.current?'1':'0'}" type="button">${session.current?'Sign out this device':'Sign out this browser'}</button></div>`;
+  const browserRow=session=>`<div class="device session-row"><span class="session-device-icon">${iconSvg('devices',20)}</span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app||'Indo Account')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" data-current="${session.current?'1':'0'}" type="button">${session.current?'Sign out this device':'Sign out this browser'}</button></div>`;
 
-  const appRow=(app,session)=>`<div class="device session-row app-row"><span class="session-device-icon app"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device||'Unknown device')}</b></div><p>${esc(app.label)} · signed in through the app</p><small>${esc(formatTime(session.last_used_at||session.created_at))}</small></div><button class="secondary app-signout" data-app="${esc(app.key)}" data-session="${esc(session.session_id||session.id)}" type="button">Sign out ${esc(app.label)}</button></div>`;
+  const appRow=(app,session)=>`<div class="device session-row app-row"><span class="session-device-icon app">${iconSvg('plug',20)}</span><div class="session-copy"><div class="session-heading"><b>${esc(session.device||'Unknown device')}</b></div><p>${esc(app.label)} · signed in through the app</p><small>${esc(formatTime(session.last_used_at||session.created_at))}</small></div><button class="secondary app-signout" data-app="${esc(app.key)}" data-session="${esc(session.session_id||session.id)}" type="button">Sign out ${esc(app.label)}</button></div>`;
 
   const section=(title,note,rows,empty)=>`<article class="panel session-group"><div class="section-title group-title"><div><h2>${title}</h2><p class="session-count">${esc(note)}</p></div></div>${rows||`<p class="form-note">${empty}</p>`}</article>`;
 
@@ -37,7 +38,7 @@ function render(){
     .session-group{margin-top:14px}.group-title h2{margin:0;font-size:16px}
     .session-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;overflow:hidden}
     .session-row+.session-row,.app-group-head+.session-row{border-top:1px solid #eef1f6}
-    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:13px;background:#e7e8ff;flex:none}.session-device-icon.app{background:#dff3ee}.session-device-icon img{width:26px;height:26px;display:block}
+    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#f2f5f9;color:#41546b;flex:none}.session-device-icon.app{background:#f2f5f9;color:#41546b}
     .session-copy{min-width:0;overflow:hidden}.session-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.session-copy b,.session-copy p,.session-copy small{overflow-wrap:anywhere;word-break:break-word}.session-copy b{display:block;line-height:1.3}.session-copy p{margin:3px 0;color:#607087}.session-copy small{display:block;color:#78869a;font-size:12px}
     .current-badge{padding:3px 7px}
     .session-signout,.app-signout{justify-self:end;white-space:nowrap;max-width:100%}

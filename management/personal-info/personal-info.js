@@ -1,11 +1,8 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-logo2';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-icons1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-icons1';
 
 const u=user();
-const iconFiles={
-  id:'identification-badge-duotone.svg',name:'user-duotone.svg',nickname:'tag-duotone.svg',gender:'gender-intersex-duotone.svg',
-  email:'envelope-simple-duotone.svg',phone:'phone-duotone.svg',birthday:'cake-duotone.svg',language:'translate-duotone.svg',
-  home:'house-duotone.svg',work:'briefcase-duotone.svg',other:'map-pin-duotone.svg'
-};
+const rowIcon={id:'id',name:'user',nickname:'tag',gender:'gender',email:'envelope',phone:'phone',birthday:'cake',language:'translate',home:'house',work:'briefcase',other:'pin'};
 const readable={kn:'Kannada (kn)',en:'English (en)',hi:'Hindi (hi)'};
 const addressSummary=(address,fallback)=>{if(typeof address==='string')return address||fallback;const parts=[address?.line1,address?.city,address?.state,address?.postal_code,address?.country].filter(Boolean);return parts.length?parts.join(', '):fallback};
 const rows=[
@@ -14,7 +11,7 @@ const rows=[
   ['birthday','Birthday','dob',u.dob||'Not set','date'],['language','Language','language',readable[u.language]||'Kannada (kn)','select'],
   ['home','Home address','home_address',addressSummary(u.home_address,'Add home address'),'address'],['work','Work address','work_address',addressSummary(u.work_address,'Add work address'),'address'],['other','Other address','other_address',addressSummary(u.other_address,'Add other address'),'address']
 ];
-const icon=name=>`<img src="../../assets/icons/phosphor/${iconFiles[name]}" alt="" aria-hidden="true">`;
+const icon=name=>`<span class="row-icon">${iconSvg(rowIcon[name]||'info',20)}</span>`;
 const row=([kind,label,key,value])=>{const verified=key==='secondary_email'?u.secondary_email_verified:key==='phone'?u.phone_verified:null;return `<button class="info-row" data-key="${key}" type="button"><span class="info-icon">${icon(kind)}</span><span><b>${label}</b><small>${esc(value)}</small>${verified!==null?`<em class="verification-state ${verified?'verified':'unverified'}">${verified?'Verified':'Not verified'}</em>`:''}</span><span class="row-action">Edit</span></button>`};
 const initials=name=>name.trim().split(/\s+/).filter(Boolean).map(part=>part[0]).join('').slice(0,2).toUpperCase();
 const photoContent=()=>u.profile_photo?`<img src="${esc(u.profile_photo)}" alt="${esc(u.full_name)} profile photo">`:`<span>${esc(initials(u.full_name))}</span>`;
@@ -23,10 +20,10 @@ setup('personal-info',`<h1>Personal info</h1><p class="lead">Manage the informat
 
 const style=document.createElement('style');
 style.textContent=`
-  .info-icon{--row-paint:#dceaff;position:relative;isolation:isolate;width:34px;height:34px;display:grid;place-items:center;color:inherit}
-  .info-icon::before{content:"";position:absolute;z-index:-1;inset:1px;border-radius:62% 38% 55% 45%/42% 58% 42% 58%;background:var(--row-paint);transform:rotate(-7deg)}
-  .info-icon::after{content:"";position:absolute;z-index:-1;width:4px;height:4px;right:-1px;top:2px;border-radius:50%;background:var(--row-paint)}
-  .info-icon img{width:21px;height:21px;display:block;filter:drop-shadow(0 1px 1px #26334816)}
+  .info-icon{width:34px;height:34px;display:grid;place-items:center;color:#5b6b80}
+  
+  
+  
   .info-row[data-key="full_name"] .info-icon{--row-paint:#d9f6db}.info-row[data-key="nickname"] .info-icon{--row-paint:#eadcff}.info-row[data-key="gender"] .info-icon{--row-paint:#ffe0ec}
   .info-row[data-key="secondary_email"] .info-icon{--row-paint:#dceaff}.info-row[data-key="phone"] .info-icon{--row-paint:#d7f4ef}.info-row[data-key="dob"] .info-icon{--row-paint:#fff0cf}
   .info-row[data-key="language"] .info-icon{--row-paint:#cdf0ff}.info-row[data-key="home_address"] .info-icon{--row-paint:#d9f6db}.info-row[data-key="work_address"] .info-icon{--row-paint:#e6e7ff}.info-row[data-key="other_address"] .info-icon{--row-paint:#ffe3df}
