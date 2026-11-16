@@ -266,6 +266,10 @@ class AppSessionExchange(BaseModel):
     device: str = Field(default="Indo app", max_length=120)
 
 
+class PanelSessionRequest(BaseModel):
+    device: str = Field(default="Indo app", max_length=120)
+
+
 class AppStatusUpdate(BaseModel):
     status: Literal["Active", "Paused"]
 
@@ -1173,6 +1177,34 @@ def exchange_app_code(payload: AppSessionExchange, request: Request) -> dict[str
         "app": {"key": payload.app, "name": APP_CLIENTS[payload.app]["name"]},
         "identity": identity_block(state),
     }
+
+
+@app.post("/api/v1/app/panel-session", status_code=201)
+def create_panel_session(
+    payload: PanelSessionRequest,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    """Trade an app token for a short-lived account session.
+
+    The app never holds an account session; it asks for one of these each time the user
+    taps Manage, and the panel throws it away when the WebView closes.
+    """
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    device = repository.clean_text(f"{APP_CLIENTS[app]['name']} panel on {payload.device}", 120)
+    token = repository.create_bearer_session(
+        user_id,
+        device,
+        ttl_seconds=settings.panel_session_seconds,
+    )
+    repository.record_security_event(
+        user_id,
+        "app.panel",
+        f"{APP_CLIENTS[app]['name']} opened the account panel",
+        f"The management panel was opened from {APP_CLIENTS[app]['name']} on {payload.device}.",
+    )
+    return {"panel_token": token, "expires_in": settings.panel_session_seconds}
 
 
 @app.get("/api/v1/app/me")

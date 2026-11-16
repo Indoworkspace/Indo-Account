@@ -1,4 +1,21 @@
-import {Store} from '../../shared/session-store.js?v=20261115-mobile1';
+import {Store} from '../../shared/session-store.js?v=20261116-panelpass2';
+import {Api} from '../../shared/api-client.js?v=20261116-panelpass2';
+
+// The app trades its own token for a short-lived account session and opens this panel
+// with it in the fragment. Adopt it before any page decides to redirect, so every
+// panel page opens already signed in and nothing has to wait.
+const handedPanel=/[#&]panel_token=([^&]+)/.exec(location.hash||'');
+if(handedPanel){
+  Api.setSession(decodeURIComponent(handedPanel[1]));
+  sessionStorage.setItem('indo_app_panel','1');
+  history.replaceState({},'',location.pathname+location.search);
+  addEventListener('pagehide',()=>{
+    Api.clearAppToken();
+    sessionStorage.removeItem('indo_app_panel');
+    localStorage.removeItem('indo_active_session');
+  });
+  try{Store.adoptIdentity(await Api.me())}catch(error){/* the page shows its own error */}
+}
 
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},

@@ -1353,7 +1353,7 @@ class DynamoAccountRepository:
         self.record_security_event(user_id, "signin", "New sign-in", f"Your Indo Account was signed in on {device}.")
         return self.get_account_state(user_id, current_token=token), token
 
-    def create_session(self, user_id: str, device: str) -> str:
+    def create_session(self, user_id: str, device: str, *, ttl_seconds: int | None = None) -> str:
         token = new_session_token()
         session_id = f"sess_{uuid4().hex[:18]}"
         current_epoch = int(time.time())
@@ -1384,7 +1384,7 @@ class DynamoAccountRepository:
                 "created_at": utc_now(),
                 "last_active": utc_now(),
                 "last_active_epoch": current_epoch,
-                "ttl": current_epoch + self.session_seconds,
+                "ttl": current_epoch + (ttl_seconds or self.session_seconds),
             }
         )
         return token
@@ -1424,8 +1424,8 @@ class DynamoAccountRepository:
                 raise AuthenticationError("Session has expired.") from error
         return user_id
 
-    def create_bearer_session(self, user_id: str, device: str) -> str:
-        return f"{user_id}.{self.create_session(user_id, device)}"
+    def create_bearer_session(self, user_id: str, device: str, *, ttl_seconds: int | None = None) -> str:
+        return f"{user_id}.{self.create_session(user_id, device, ttl_seconds=ttl_seconds)}"
 
     def current_session_id(self, user_id: str, token: str) -> str:
         try:

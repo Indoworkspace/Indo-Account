@@ -43,6 +43,7 @@ class Settings:
     id_rate_window_seconds: int = int(os.getenv("ID_RATE_WINDOW_SECONDS", "60"))
     id_rate_target_limit: int = int(os.getenv("ID_RATE_TARGET_LIMIT", "10"))
     id_rate_ip_limit: int = int(os.getenv("ID_RATE_IP_LIMIT", "30"))
+    panel_session_seconds: int = int(os.getenv("PANEL_SESSION_SECONDS", "900"))
     app_token_days: int = int(os.getenv("APP_TOKEN_DAYS", "30"))
     app_code_seconds: int = int(os.getenv("APP_CODE_SECONDS", "60"))
     app_history_limit: int = int(os.getenv("APP_HISTORY_LIMIT", "500"))

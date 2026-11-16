@@ -1,4 +1,4 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261115-mobile1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-panelpass2';
 
 const u=user();
 const icon={
