@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-applogos1';
+import {appPage} from '../app-page.js?v=20261116-footer1';
 
 appPage('EYESEARCH','Eyesearch');

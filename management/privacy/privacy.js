@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-applogos1';
+import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-footer1';
 
 const u=user();
 

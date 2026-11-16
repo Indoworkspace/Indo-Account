@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-applogos1';
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-applogos1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-footer1';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-footer1';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',
