@@ -30,17 +30,21 @@ export function setup(active,content,prefix='../'){
   const appScoped=sessionStorage.getItem('indo_app_panel')==='1';
   if(!signedIn&&!appScoped){location.replace(`${prefix}../Sign%20in/index.html`);return}
   const signInPage=`${prefix}../Sign%20in/index.html`;
-  if(!window.__indoValidateSession){
-    let pending=null;
-    window.__indoValidateSession=()=>{
-      if(pending)return pending;
-      pending=Store.refresh().catch(()=>{if(!Store.current())location.replace(signInPage)}).finally(()=>{pending=null});
-      return pending;
-    };
-    addEventListener('focus',()=>window.__indoValidateSession());
-    addEventListener('pageshow',event=>{if(event.persisted)window.__indoValidateSession()});
+  // An app-scoped panel must never run the browser validation: it would call
+  // /api/v1/me with an app token, get 401 by design, and bounce to sign-in.
+  if(!appScoped){
+    if(!window.__indoValidateSession){
+      let pending=null;
+      window.__indoValidateSession=()=>{
+        if(pending)return pending;
+        pending=Store.refresh().catch(()=>{if(!Store.current())location.replace(signInPage)}).finally(()=>{pending=null});
+        return pending;
+      };
+      addEventListener('focus',()=>window.__indoValidateSession());
+      addEventListener('pageshow',event=>{if(event.persisted)window.__indoValidateSession()});
+    }
+    if(!window.__indoSessionValidated)window.__indoValidateSession();
   }
-  if(!window.__indoSessionValidated)window.__indoValidateSession();
   const u=signedIn;
   const nav=groups.map(group=>`<div class="nav-group"><p class="nav-title">${group.title}</p><nav class="nav">${group.items.map(([key,label])=>`<a class="${key===active?'active':''}" href="${prefix}${paths[key]}/index.html"><span class="nav-icon icon-${key}"><img src="${prefix}../assets/icons/phosphor/${iconFiles[key]}" alt="" aria-hidden="true"></span>${label}</a>`).join('')}</nav></div>`).join('');
   const profileMotion=`<div class="avatar-motion" aria-hidden="true"><span class="paint paint-blue"></span><span class="paint paint-green"></span><span class="paint paint-purple"></span><span class="paint paint-pink"></span><span class="paint paint-gold"></span><span class="paint paint-star">✦</span></div>`;
