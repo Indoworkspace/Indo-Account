@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import os
 import re
 import time
 from typing import Annotated, Any, Literal
@@ -57,6 +58,14 @@ email_sender = SesEmailSender(
     boto3.client("sesv2", region_name=settings.aws_region),
     from_email=settings.otp_from_email,
 )
+# Lambda does not configure logging, so the root logger stays at WARNING and every
+# `logger.info` was silently dropped — only exceptions ever reached CloudWatch, which made a
+# quiet log look like proof that nothing happened. Give the root logger a handler and a level
+# once, so each decision is visible.
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(levelname)s %(name)s %(message)s")
+else:
+    logging.getLogger().setLevel(os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Indo Account API", version="1.0.0", docs_url=None, redoc_url=None)
 
