@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261116-footer1';import {Api} from '../shared/api-client.js?v=20261116-footer1';Store.init();
+import {Store} from '../shared/session-store.js?v=20261116-footer2';import {Api} from '../shared/api-client.js?v=20261116-footer2';Store.init();
 const $=s=>document.querySelector(s),form=$('#signin-form'),submit=$('#signin-button');$('#toggle-password').onclick=()=>{const p=$('#password'),button=$('#toggle-password'),hidden=p.type==='password';p.type=hidden?'text':'password';button.setAttribute('aria-label',hidden?'Hide password':'Show password');button.title=hidden?'Hide password':'Show password'};
 if(new URLSearchParams(location.search).get('reset')==='success'){const message=$('#message');message.className='success';message.textContent='Password updated. Sign in with your new password.';history.replaceState({},'',location.pathname)}
 
