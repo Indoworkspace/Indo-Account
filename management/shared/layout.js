@@ -1,5 +1,5 @@
-import {Store} from '../../shared/session-store.js?v=20261116-logo1';
-import {Api} from '../../shared/api-client.js?v=20261116-logo1';
+import {Store} from '../../shared/session-store.js?v=20261116-panelpass3';
+import {Api} from '../../shared/api-client.js?v=20261116-panelpass3';
 
 // The app trades its own token for a short-lived account session and opens this panel
 // with it in the fragment. Adopt it before any page decides to redirect, so every
@@ -9,11 +9,11 @@ if(handedPanel){
   Api.setSession(decodeURIComponent(handedPanel[1]));
   sessionStorage.setItem('indo_app_panel','1');
   history.replaceState({},'',location.pathname+location.search);
-  addEventListener('pagehide',()=>{
-    Api.clearAppToken();
-    sessionStorage.removeItem('indo_app_panel');
-    localStorage.removeItem('indo_active_session');
-  });
+}
+// The pass lives in sessionStorage, which belongs to this tab and dies with it. It must
+// NOT be cleared on pagehide: moving between panel pages is the same tab, and clearing it
+// there is what made every second page ask for a password again.
+if(sessionStorage.getItem('indo_app_panel')==='1'&&!Store.current()){
   try{Store.adoptIdentity(await Api.me())}catch(error){/* the page shows its own error */}
 }
 
