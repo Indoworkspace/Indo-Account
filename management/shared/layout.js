@@ -24,7 +24,11 @@ export const user=()=>Store.current()||emptyUser();
 
 export function setup(active,content,prefix='../'){
   const signedIn=Store.current();
-  if(!signedIn){location.replace(`${prefix}../Sign%20in/index.html`);return}
+  // An app can open this panel with its own token in the fragment. That token is a
+  // valid session for one app box even though no browser-local profile exists yet,
+  // so never bounce to sign-in when the page was opened that way.
+  const appScoped=sessionStorage.getItem('indo_app_panel')==='1';
+  if(!signedIn&&!appScoped){location.replace(`${prefix}../Sign%20in/index.html`);return}
   const signInPage=`${prefix}../Sign%20in/index.html`;
   if(!window.__indoValidateSession){
     let pending=null;

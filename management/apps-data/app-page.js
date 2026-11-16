@@ -116,8 +116,10 @@ export function appPage(key,label){
   };
 
   async function load(){
-    setup('apps-data',`<h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
+    // Adopt the handed identity before any setup() call: setup() sends the browser
+    // to the sign-in page when it finds no local user, and a fresh WebView has none.
     await adoptHandedIdentity();
+    setup('apps-data',`<h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
     try{box=await Api.getApp(key);paint()}
     catch(error){setup('apps-data',`<a class="secondary" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="form-note">${esc(error.message)}</p>`,'../../')}
   }
