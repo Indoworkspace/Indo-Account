@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-sankalplogo1';
+import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-buttons1';
 
 const u=user();
 
