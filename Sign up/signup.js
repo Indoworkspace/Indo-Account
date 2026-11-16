@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261116-footer2';
+import {Store} from '../shared/session-store.js?v=20261116-poster1';
 
 Store.init();
 const $=selector=>document.querySelector(selector),form=$('#signup-form');

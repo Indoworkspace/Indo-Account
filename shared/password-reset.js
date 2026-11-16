@@ -1,4 +1,4 @@
-import {Api} from './api-client.js?v=20261116-footer2';
+import {Api} from './api-client.js?v=20261116-poster1';
 
 export const PasswordReset={
   request:identifier=>Api.requestPasswordReset(identifier),
