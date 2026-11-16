@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-signoutfix1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-approws1';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],

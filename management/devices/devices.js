@@ -1,5 +1,5 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-signoutfix1';
-import {Api} from '../../shared/api-client.js?v=20261116-signoutfix1';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-approws1';
+import {Api} from '../../shared/api-client.js?v=20261116-approws1';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
@@ -17,7 +17,7 @@ function render(){
 
   const browserRow=session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app||'Indo Account')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" data-current="${session.current?'1':'0'}" type="button">${session.current?'Sign out this device':'Sign out this browser'}</button></div>`;
 
-  const appRow=(app,session)=>`<div class="device session-row"><span class="session-device-icon app"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device||'Unknown device')}</b><span class="badge app-badge">${esc(app.label)}</span></div><p>Signed in through the ${esc(app.label)} app</p><small>${esc(formatTime(session.last_used_at||session.created_at))}</small></div><button class="secondary app-signout" data-app="${esc(app.key)}" data-session="${esc(session.session_id||session.id)}" type="button">Sign out ${esc(app.label)}</button></div>`;
+  const appRow=(app,session)=>`<div class="device session-row app-row"><span class="session-device-icon app"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device||'Unknown device')}</b></div><p>${esc(app.label)} · signed in through the app</p><small>${esc(formatTime(session.last_used_at||session.created_at))}</small></div><button class="secondary app-signout" data-app="${esc(app.key)}" data-session="${esc(session.session_id||session.id)}" type="button">Sign out ${esc(app.label)}</button></div>`;
 
   const section=(title,note,rows,empty)=>`<article class="panel session-group"><div class="section-title group-title"><div><h2>${title}</h2><p class="session-count">${esc(note)}</p></div></div>${rows||`<p class="form-note">${empty}</p>`}</article>`;
 
@@ -35,14 +35,15 @@ function render(){
   style.textContent=`
     .sessions-title{align-items:center}.sessions-title h2{margin:0}.session-count{margin:3px 0 0;color:#607087;font-size:12px}.sessions-title .danger{margin-left:auto}.sessions-title .danger:disabled{opacity:.5;cursor:not-allowed}
     .session-group{margin-top:14px}.group-title h2{margin:0;font-size:16px}
-    .session-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;border-top:1px solid #eef1f6}.session-row:first-of-type{border-top:0}
-    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:13px;background:#e7e8ff}.session-device-icon.app{background:#dff3ee}.session-device-icon img{width:26px;height:26px}
-    .session-copy{min-width:0}.session-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.session-copy b,.session-copy p,.session-copy small{overflow-wrap:anywhere}.session-copy p{margin:3px 0;color:#607087}.session-copy small{display:block;color:#78869a;font-size:12px}
-    .current-badge{padding:3px 7px}.app-badge{padding:3px 7px;background:#dff3ee;color:#0f6b5c}
-    .session-signout,.app-signout{justify-self:end;white-space:nowrap}
-    .app-group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 0 4px;border-top:1px solid #eef1f6}.app-group-head:first-of-type{border-top:0}.app-group-head b{margin-right:auto}
-    @media(max-width:760px){.sessions-title{display:grid;grid-template-columns:1fr}.sessions-title .danger{width:100%;margin:8px 0 0}.session-row{grid-template-columns:36px minmax(0,1fr) auto;gap:10px}.session-device-icon{width:34px;height:34px}.session-device-icon img{width:22px;height:22px}.session-signout,.app-signout{align-self:center;padding:9px 11px}}
-    @media(max-width:430px){.session-row{grid-template-columns:36px minmax(0,1fr)}.session-device-icon{grid-row:1}.session-signout,.app-signout{grid-column:1/-1;justify-self:stretch;width:100%}.app-group-head{display:grid;grid-template-columns:1fr}.app-group-head button{width:100%}}
+    .session-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;overflow:hidden}
+    .session-row+.session-row,.app-group-head+.session-row{border-top:1px solid #eef1f6}
+    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:13px;background:#e7e8ff;flex:none}.session-device-icon.app{background:#dff3ee}.session-device-icon img{width:26px;height:26px;display:block}
+    .session-copy{min-width:0;overflow:hidden}.session-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.session-copy b,.session-copy p,.session-copy small{overflow-wrap:anywhere;word-break:break-word}.session-copy b{display:block;line-height:1.3}.session-copy p{margin:3px 0;color:#607087}.session-copy small{display:block;color:#78869a;font-size:12px}
+    .current-badge{padding:3px 7px}
+    .session-signout,.app-signout{justify-self:end;white-space:nowrap;max-width:100%}
+    .app-group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 0 6px}.app-group-head:not(:first-child){border-top:1px solid #eef1f6}.app-group-head b{margin-right:auto;font-size:15px;overflow-wrap:anywhere}
+    @media(max-width:760px){.sessions-title{display:grid;grid-template-columns:1fr}.sessions-title .danger{width:100%;margin:8px 0 0}.session-row{grid-template-columns:36px minmax(0,1fr) auto;gap:10px}.session-device-icon{width:34px;height:34px}.session-device-icon img{width:22px;height:22px}.session-signout,.app-signout{align-self:center;padding:9px 11px;white-space:normal;text-align:center;max-width:130px}}
+    @media(max-width:430px){.session-row{grid-template-columns:36px minmax(0,1fr)}.session-device-icon{grid-row:1}.session-signout,.app-signout{grid-column:1/-1;justify-self:stretch;width:100%;max-width:none}.app-group-head{display:grid;grid-template-columns:1fr;gap:8px}.app-group-head button{width:100%}}
   `;
   document.head.append(style);
 
