@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-rowfix1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-devices1';
 
 const u=user();
 const iconFiles={

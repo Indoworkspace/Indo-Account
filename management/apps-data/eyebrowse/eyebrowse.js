@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-rowfix1';
+import {appPage} from '../app-page.js?v=20261116-devices1';
 
 appPage('EYEBROWSE','Eyebrowse');

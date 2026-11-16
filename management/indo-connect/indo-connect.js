@@ -1,4 +1,4 @@
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-rowfix1';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-devices1';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',

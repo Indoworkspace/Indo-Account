@@ -1,5 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-rowfix1';
-import {Api} from '../../shared/api-client.js?v=20261116-rowfix1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-devices1';
+import {Api} from '../../shared/api-client.js?v=20261116-devices1';
 
 const u=user();
 const icon={
