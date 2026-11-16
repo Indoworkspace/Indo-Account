@@ -1,5 +1,5 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-buttons2';
-import {Api} from '../../shared/api-client.js?v=20261116-buttons2';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-applogos1';
+import {Api} from '../../shared/api-client.js?v=20261116-applogos1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
@@ -69,7 +69,7 @@ export function appPage(key,label){
 
     setup('apps-data',`
       <a class="secondary page-back" href="../index.html">← All apps</a>
-      <h1 class="app-title">${key==='SANKALPA'?'<img class="app-title-mark" src="../../../assets/branding/sankalp-mark-256.png" alt="">':''}<span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
+      <h1 class="app-title"><img class="app-title-mark" src="../../../assets/branding/${label.split(' ')[0].toLowerCase()}-mark-256.png" alt=""><span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
       <p class="lead">Access and the data this app keeps in your Indo Account.</p>
 
       <article class="panel">

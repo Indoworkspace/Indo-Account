@@ -1,5 +1,5 @@
-import {Store as BaseStore} from './store.js?v=20261116-buttons2';
-import {Api} from './api-client.js?v=20261116-buttons2';
+import {Store as BaseStore} from './store.js?v=20261116-applogos1';
+import {Api} from './api-client.js?v=20261116-applogos1';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';
