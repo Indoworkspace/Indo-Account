@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-bughunt1';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-logo2';
 
 const u=user();
 const apps=[
