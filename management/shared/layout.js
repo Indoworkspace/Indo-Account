@@ -1,5 +1,5 @@
-import {Store} from '../../shared/session-store.js?v=20261116-panelpass3';
-import {Api} from '../../shared/api-client.js?v=20261116-panelpass3';
+import {Store} from '../../shared/session-store.js?v=20261116-bughunt1';
+import {Api} from '../../shared/api-client.js?v=20261116-bughunt1';
 
 // The app trades its own token for a short-lived account session and opens this panel
 // with it in the fragment. Adopt it before any page decides to redirect, so every
@@ -146,7 +146,7 @@ export function setup(active,content,prefix='../'){
     }
   `;
   document.head.append(responsiveStyle);
-  $('#signout').onclick=()=>{Store.signout();location.replace(`${prefix}../Sign%20in/index.html`)};
+  $('#signout').onclick=async()=>{const button=$('#signout');button.disabled=true;try{await Store.signout()}finally{location.replace(`${prefix}../Sign%20in/index.html`)}};
   const menu=$('#management-menu'),toggle=$('#menu-toggle'),scrim=$('#menu-scrim');
   const closeMenu=(returnFocus=false)=>{menu.classList.remove('open');scrim.classList.remove('show');document.body.classList.remove('menu-open');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-label','Open menu');if(returnFocus)toggle.focus()};
   toggle.onclick=()=>{const open=!menu.classList.contains('open');menu.classList.toggle('open',open);scrim.classList.toggle('show',open);document.body.classList.toggle('menu-open',open);toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',open?'Close menu':'Open menu')};

@@ -42,7 +42,7 @@ Store.verifySignupOtp=(email,code)=>Api.verifySignupOtp(email,code);
 Store.login=async(identifier,password)=>mirrorRemote(await Api.login(identifier,password));
 Store.current=()=>{const current=activeUser(read());if(Api.hasSession())return current||null;if(current?.remote_managed){clearBrowserSession();return null}return localCurrent()};
 Store.refresh=async()=>{if(!Api.hasSession())return Store.current();return mirrorRemote(await Api.me())};
-Store.signout=()=>{if(Api.hasSession())Api.logout().catch(()=>{});clearBrowserSession()};
+Store.signout=async()=>{try{if(Api.hasSession())await Api.logout()}catch(error){}finally{clearBrowserSession()}};
 Store.update=async changes=>{if(!Api.hasSession())return localUpdate(changes);return mirrorRemote(await Api.update(changes))};
 Store.requestRecoveryEmailOtp=email=>Api.requestRecoveryEmailOtp(email);
 Store.verifyRecoveryEmailOtp=async(email,code)=>mirrorRemote(await Api.verifyRecoveryEmailOtp(email,code));

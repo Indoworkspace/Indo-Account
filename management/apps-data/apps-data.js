@@ -1,5 +1,5 @@
-import {setup,esc,$,toast} from '../shared/layout.js?v=20261116-panelpass3';
-import {Api} from '../../shared/api-client.js?v=20261116-panelpass3';
+import {setup,esc,$,toast} from '../shared/layout.js?v=20261116-bughunt1';
+import {Api} from '../../shared/api-client.js?v=20261116-bughunt1';
 
 const apps=[
   ['SANKALPA','Sankalp','AI Assistant','sankalp/index.html','','Chat history, saved items and AI memory.'],
