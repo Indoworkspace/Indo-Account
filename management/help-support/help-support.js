@@ -1,4 +1,4 @@
-import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-buttons2';
+import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-applogos1';
 
 const u=user();
 
