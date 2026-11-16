@@ -103,6 +103,7 @@ Eyebrowse is a first-party client, so there is no consent screen.
    {
      "token": "<opaque app token>",
      "expires_in": 2592000,
+     "session_id": "aps_7f3e9b21",
      "app": { "key": "EYEBROWSE", "name": "Eyebrowse Browser" },
      "identity": {
        "user_id": "usr_...",
@@ -121,7 +122,12 @@ is wrong, so a guessed verifier cannot be retried against a live code.
 
 Rules for the token: opaque, 32 random bytes, stored only as a SHA-256 digest,
 30-day lifetime, bound to one app key, listed as its own session so the panel can
-revoke it alone.
+revoke it alone. `session_id` is always returned and is the id the panel shows and
+revokes; a client may ignore it, but it will never be absent.
+
+The `device` field is free text up to 120 characters and is what the panel shows in
+the sessions row. Send `Eyebrowse on <model>` rather than the bare model name, so a
+row reads like the browser sessions already do.
 
 `identity` carries exactly five fields and nothing else. No email, no mobile, no
 date of birth, no address.
