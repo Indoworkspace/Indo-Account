@@ -1,5 +1,5 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-bughunt1';
-import {Api} from '../../shared/api-client.js?v=20261116-bughunt1';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-logo2';
+import {Api} from '../../shared/api-client.js?v=20261116-logo2';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
