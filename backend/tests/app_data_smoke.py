@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import sys
 
@@ -76,16 +77,21 @@ class FakeTable:
     def put_item(self, Item):
         self.items[self._key(Item)] = dict(Item)
 
-    def query(self, KeyConditionExpression, ExpressionAttributeValues, ConsistentRead=False):  # noqa: N803
+    def query(self, KeyConditionExpression, ExpressionAttributeValues, ConsistentRead=False, Limit=None, ScanIndexForward=True, Select=None):  # noqa: N803
         pk = ExpressionAttributeValues[":pk"]
         prefix = None
-        for name, value in ExpressionAttributeValues.items():
-            if name == ":session":
-                prefix = value
+        for name in (":session", ":prefix"):
+            if name in ExpressionAttributeValues:
+                prefix = ExpressionAttributeValues[name]
         rows = [dict(item) for (item_pk, sk), item in self.items.items() if item_pk == pk]
         if prefix:
             rows = [row for row in rows if str(row["SK"]).startswith(prefix)]
-        return {"Items": rows}
+        rows.sort(key=lambda row: str(row["SK"]), reverse=not ScanIndexForward)
+        if Limit:
+            rows = rows[: int(Limit)]
+        if Select == "COUNT":
+            return {"Items": [], "Count": len(rows)}
+        return {"Items": rows, "Count": len(rows)}
 
     def delete_item(self, Key, ConditionExpression=None, ExpressionAttributeValues=None, ExpressionAttributeNames=None):  # noqa: N803
         existing = self.items.get(self._key(Key))
@@ -118,6 +124,13 @@ class FakeTable:
             field = name.lstrip(":")
             item[{"stamp": "last_used_at", "active": "last_active"}.get(field, field)] = value
         return {"Attributes": item}
+
+    def scan(self, FilterExpression=None, ExpressionAttributeValues=None, ExclusiveStartKey=None):  # noqa: N803
+        rows = [dict(item) for item in self.items.values()]
+        if FilterExpression and ":kind" in (ExpressionAttributeValues or {}):
+            kind = ExpressionAttributeValues[":kind"]
+            rows = [row for row in rows if row.get("entity_type") == kind]
+        return {"Items": rows}
 
     def batch_writer(self):
         table = self
@@ -436,6 +449,89 @@ def main() -> int:
     check("clear all works", cleared.status_code == 200, cleared.text)
     remaining = [key for key in table.items if key[0] == f"USER#{user_id}" and key[1].startswith("EVENT#")]
     check("table holds no events", not remaining, str(len(remaining)))
+
+    print("history is one item per visit")
+    app = "EYEBROWSE"
+    repo.issue_app_token(user_id, app, "Pixel 7") if False else None
+    before_items = len(table.items)
+    repo.add_app_history(user_id, app, [{"url": "https://example.com/a", "title": "A", "visited_at": "2026-11-16T10:00:00Z"}])
+    after_items = len(table.items)
+    hist_keys = [key for key in table.items if key[1].startswith(f"HIST#{app}#")]
+    check("one visit writes one item", after_items - before_items == 1, f"{after_items - before_items}")
+    check("history item exists", len(hist_keys) == 1, str(hist_keys))
+    box_item = table.items[(f"USER#{user_id}", f"APP#{app}#STATE")]
+    blob = json.dumps(box_item.get("state", {}))
+    check("box no longer carries history", "example.com/a" not in blob)
+
+    repo.add_app_history(user_id, app, [{"url": "https://example.com/b", "title": "B", "visited_at": "2026-11-16T10:05:00Z"}])
+    listed = repo.list_app_history(user_id, app, limit=1)
+    check("newest first", listed["items"][0]["title"] == "B", str(listed["items"]))
+    check("paging gives a cursor", listed["next_cursor"] is not None)
+    second = repo.list_app_history(user_id, app, limit=1, cursor=listed["next_cursor"])
+    check("second page continues", second["items"][0]["title"] == "A", str(second["items"]))
+    check("count is the real total", repo._count_entries(user_id, "HIST", app) == 2)
+
+    print("history trimming")
+    repo.app_history_limit = 3
+    for index in range(5):
+        repo.add_app_history(user_id, app, [{"url": f"https://example.com/t{index}", "title": f"T{index}", "visited_at": f"2026-11-16T11:0{index}:00Z"}])
+    kept = repo._count_entries(user_id, "HIST", app)
+    check("history stops at the limit", kept == 3, str(kept))
+    newest = repo.list_app_history(user_id, app, limit=5)["items"]
+    check("the newest survive", newest[0]["title"] == "T4", str([item["title"] for item in newest]))
+    repo.app_history_limit = 500
+
+    print("saved items")
+    first = repo.add_app_saved(user_id, app, "One", "https://example.com/one")
+    repo.add_app_saved(user_id, app, "Two", "https://example.com/two")
+    again = repo.add_app_saved(user_id, app, "One again", "https://example.com/one")
+    saved = repo.list_app_saved(user_id, app, limit=10)["items"]
+    check("same url is kept once", len([item for item in saved if item["url"] == "https://example.com/one"]) == 1, str([item["url"] for item in saved]))
+    check("the newer copy wins", any(item["id"] == again["id"] for item in saved))
+    repo.delete_app_saved(user_id, app, again["id"])
+    remaining = repo.list_app_saved(user_id, app, limit=10)["items"]
+    check("delete removes one item", all(item["id"] != again["id"] for item in remaining))
+    check("the other stays", any(item["id"] == first["id"] or item["url"] == "https://example.com/two" for item in remaining))
+
+    print("box payload still carries history")
+    box = repo.get_app_box(user_id, app)
+    check("box shows history", len(box["data"]["history"]) >= 1, str(len(box["data"]["history"])))
+    check("box shows saved", len(box["data"]["saved"]) >= 1)
+    check("counts match storage", box["counts"]["history"] == repo._count_entries(user_id, "HIST", app))
+
+    print("clear history removes items")
+    repo.clear_app_history(user_id, app)
+    check("history items are gone", not [key for key in table.items if key[1].startswith(f"HIST#{app}#")])
+    check("saved items stay", [key for key in table.items if key[1].startswith(f"SAVE#{app}#")])
+
+    print("migration of old blobs")
+    old_user = "usr_migrate0000000001"
+    blob = {
+        "PK": f"USER#{old_user}",
+        "SK": f"APP#{app}#STATE",
+        "entity_type": "APP_STATE",
+        "state": {
+            "name": "Eyebrowse",
+            "status": "Active",
+            "connected": True,
+            "data": {
+                "history": [{"id": "hs_old1", "title": "Old", "origin": "https://old.example", "path": "/", "visited_at": "2026-11-15T09:00:00Z", "visits": 1}],
+                "saved": [{"id": "sv_old1", "title": "Old save", "url": "https://old.example", "added_at": "2026-11-15T09:00:00Z"}],
+            },
+        },
+    }
+    table.items[(blob["PK"], blob["SK"])] = blob
+    dry = repo.migrate_app_boxes(dry_run=True)
+    check("dry run reports the entries", dry["history"] == 1 and dry["saved"] == 1, str(dry))
+    check("dry run writes nothing", not [key for key in table.items if key[1].startswith(f"HIST#{app}#") and key[0] == f"USER#{old_user}"])
+    done = repo.migrate_app_boxes()
+    check("migration moved the history", done["history"] == 1, str(done))
+    moved = repo.list_app_history(old_user, app, limit=5)["items"]
+    check("moved entry is readable", moved and moved[0]["title"] == "Old", str(moved))
+    blob_after = table.items[(blob["PK"], blob["SK"])]["state"]["data"]
+    check("blob is emptied", "history" not in blob_after and "saved" not in blob_after, str(blob_after))
+    again = repo.migrate_app_boxes()
+    check("running twice changes nothing", again["history"] == 0, str(again))
 
     print("cascade")
     repo.delete_account(user_id)
