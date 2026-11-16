@@ -1,4 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-panelpass2';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-activitysel1';
+import {Api} from '../../shared/api-client.js?v=20261116-activitysel1';
 
 const u=user();
 const icon={
@@ -13,7 +14,7 @@ const svg=name=>`<svg viewBox="0 0 24 24" aria-hidden="true">${icon[name]}</svg>
 const method=(name,title,detail,action,extra='')=>`<button class="security-item" type="button" data-action="${action}"><span class="security-icon">${svg(name)}</span><span><b>${title}</b><small>${detail}</small></span>${extra}<span class="security-arrow">›</span></button>`;
 const eventTime=value=>{try{return new Date(value).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'})}catch{return 'Recently'}};
 const events=(u.security_events||[]).slice(0,30);
-const activity=events.length?events.map(event=>`<div class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>${esc(event.title)}</b><small>${esc(event.detail)} · ${esc(eventTime(event.created_at))}</small></span><span class="badge">Account</span></div>`).join(''):`<div class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>No recent security alerts</b><small>No unusual activity has been recorded in the last 28 days.</small></span><span class="badge">Protected</span></div>`;
+const activity=events.length?events.map(event=>`<div class="security-activity" data-event-id="${esc(event.id)}"><span class="security-icon">${svg('shield')}</span><span><b>${esc(event.title)}</b><small>${esc(event.detail)} · ${esc(eventTime(event.created_at))}</small></span><span class="badge">Account</span><span class="activity-tick" aria-hidden="true"></span></div>`).join(''):`<div class="security-activity"><span class="security-icon">${svg('shield')}</span><span><b>No recent security alerts</b><small>No unusual activity has been recorded in the last 28 days.</small></span><span class="badge">Protected</span></div>`;
 const passwordEvent=events.find(event=>event.type==='password');
 
 setup('security',`<h1>Security &amp; sign-in</h1><p class="lead">Review sign-in methods, devices, and access to your Indo Account.</p>
@@ -81,3 +82,94 @@ function openPassword(button){
 }
 document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{const action=button.dataset.action;if(action==='password'){openPassword(button);return}location.href=action==='personal'?'../personal-info/index.html':action==='devices'?'../devices/index.html':'../apps-data/index.html'});
 document.querySelectorAll('[data-coming]').forEach(button=>button.onclick=()=>toast('This security method will be enabled with the production backend.'));
+
+// Security activity: long-press to start selecting, tick what to remove, delete.
+(()=>{
+  const list=document.querySelector('.security-activity-list');
+  if(!list)return;
+  const rows=[...list.querySelectorAll('.security-activity[data-event-id]')];
+  if(!rows.length)return;
+  const selected=new Set();
+  let selecting=false,timer=null,bar=null;
+
+  const style=document.createElement('style');
+  style.textContent=`
+    .activity-tick{display:none;width:22px;height:22px;border:2px solid #bdc8d7;border-radius:50%;grid-column:3;grid-row:1}
+    .security-activity-list.selecting .activity-tick{display:block}
+    .security-activity-list.selecting .badge{display:none}
+    .security-activity.selected{background:#eef4ff}
+    .security-activity.selected .activity-tick{border-color:#2457d6;background:#2457d6;box-shadow:inset 0 0 0 3px #fff}
+    .activity-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid #dce3ed;border-radius:14px;background:#fff;margin:0 0 10px;font-size:13px}
+    .activity-bar b{margin-right:auto}
+    .activity-bar button{border:1px solid #bdc8d7;border-radius:9px;background:#fff;padding:7px 11px;font-weight:700;color:#263348}
+    .activity-bar button.danger{border-color:#e5b4b4;color:#b42318}
+    .security-activity{cursor:default;user-select:none}
+  `;
+  document.head.append(style);
+
+  const paint=()=>rows.forEach(row=>row.classList.toggle('selected',selected.has(row.dataset.eventId)));
+
+  const exit=()=>{
+    selecting=false;selected.clear();paint();
+    list.classList.remove('selecting');
+    if(bar){bar.remove();bar=null}
+  };
+
+  const enter=id=>{
+    selecting=true;
+    list.classList.add('selecting');
+    selected.add(id);
+    paint();
+    bar=document.createElement('div');
+    bar.className='activity-bar';
+    bar.innerHTML=`<b><span id="activity-count">1</span> selected</b>
+      <button type="button" id="activity-all">Select all</button>
+      <button type="button" class="danger" id="activity-delete">Delete</button>
+      <button type="button" id="activity-cancel">Cancel</button>`;
+    list.parentElement.insertBefore(bar,list);
+    bar.querySelector('#activity-all').onclick=()=>{rows.forEach(row=>selected.add(row.dataset.eventId));paint();update()};
+    bar.querySelector('#activity-cancel').onclick=exit;
+    bar.querySelector('#activity-delete').onclick=remove;
+    update();
+  };
+
+  const update=()=>{
+    const count=bar?.querySelector('#activity-count');
+    if(count)count.textContent=String(selected.size);
+  };
+
+  const remove=async()=>{
+    if(!selected.size)return;
+    const ids=[...selected];
+    const button=bar.querySelector('#activity-delete');
+    button.disabled=true;button.textContent='Deleting…';
+    try{
+      await Api.deleteSecurityEvents(ids);
+      toast(`${ids.length} entr${ids.length===1?'y':'ies'} deleted.`);
+      location.reload();
+    }catch(error){
+      toast(error.message);
+      button.disabled=false;button.textContent='Delete';
+    }
+  };
+
+  rows.forEach(row=>{
+    row.addEventListener('pointerdown',event=>{
+      if(selecting)return;
+      if(event.pointerType==='mouse'&&event.button!==0)return;
+      timer=setTimeout(()=>{timer=null;enter(row.dataset.eventId)},500);
+    });
+    ['pointerup','pointercancel','pointerleave','pointermove'].forEach(name=>row.addEventListener(name,()=>{
+      if(timer){clearTimeout(timer);timer=null}
+    }));
+    row.addEventListener('click',()=>{
+      if(!selecting)return;
+      const id=row.dataset.eventId;
+      if(selected.has(id))selected.delete(id);else selected.add(id);
+      paint();update();
+    });
+    row.addEventListener('contextmenu',event=>event.preventDefault());
+  });
+
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&selecting){event.preventDefault();exit()}});
+})();

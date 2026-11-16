@@ -1559,6 +1559,27 @@ class DynamoAccountRepository:
         self.record_security_event(user_id, "privacy", "Account data downloaded", "A secure copy of your Indo Account data was downloaded.")
         return export
 
+    def delete_security_events(self, user_id: str, ids: list[str] | None = None) -> int:
+        """Remove security events, or every one of them when no ids are given."""
+        wanted = {str(value) for value in ids} if ids else None
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}"},
+            ConsistentRead=True,
+        )
+        targets = []
+        for item in response.get("Items", []):
+            sort_key = str(item.get("SK", ""))
+            if not sort_key.startswith("EVENT#"):
+                continue
+            if wanted is not None and str(item.get("id", sort_key.removeprefix("EVENT#"))) not in wanted:
+                continue
+            targets.append(item)
+        with self.table.batch_writer() as batch:
+            for item in targets:
+                batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+        return len(targets)
+
     def revoke_all_sessions(self, user_id: str, *, keep_session_id: str | None = None) -> int:
         """Revoke every browser session and every app session, optionally keeping one.
 

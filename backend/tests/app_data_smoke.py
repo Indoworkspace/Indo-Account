@@ -399,6 +399,25 @@ def main() -> int:
     check("panel token lists the app boxes", client.get("/api/v1/me/apps", headers=panel_headers).status_code == 200)
     check("panel token is not an app token", client.get("/api/v1/app/me", headers=panel_headers).status_code in {401, 403})
 
+    print("security activity deletion")
+    for index in range(4):
+        repo.record_security_event(user_id, "test", f"Event {index}", "Created by the smoke test.")
+    events = [item for key, item in table.items.items() if key[0] == f"USER#{user_id}" and key[1].startswith("EVENT#")]
+    check("events recorded", len(events) >= 4, str(len(events)))
+    victim = events[0]["id"]
+    survivor = events[1]["id"]
+    removed_one = client.request(
+        "DELETE",
+        "/api/v1/me/security-events",
+        headers=user_headers,
+        json={"ids": [victim]},
+    )
+    check("delete one event", removed_one.status_code == 200, removed_one.text)
+    check("one removed", removed_one.json()["removed"] == 1, removed_one.text)
+    left = [item for key, item in table.items.items() if key[0] == f"USER#{user_id}" and key[1].startswith("EVENT#")]
+    check("deleted id is gone", all(item["id"] != victim for item in left))
+    check("other events survive", any(item["id"] == survivor for item in left))
+
     print("cascade")
     repo.delete_account(user_id)
     left = [key for key in table.items if key[0] == f"USER#{user_id}"]

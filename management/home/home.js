@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-panelpass2';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-activitysel1';
 
 const u=user();
 const apps=[
