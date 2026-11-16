@@ -1,8 +1,24 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-notifsoff1';
-import {Api} from '../../shared/api-client.js?v=20261116-notifsoff1';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-rowfix1';
+import {Api} from '../../shared/api-client.js?v=20261116-rowfix1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
+
+const listStyle=document.createElement('style');
+listStyle.textContent=`
+  .data-list{list-style:none;margin:0;padding:0;background:#fff;border:1px solid #e1e7ef;border-radius:14px;overflow:hidden}
+  .data-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #e7ebf1}
+  .data-list li:last-child{border-bottom:0}
+  .data-list li b{display:block;font-size:14px;overflow-wrap:anywhere}
+  .data-list li small{display:block;margin-top:2px;color:#607087;font-size:12px;overflow-wrap:anywhere}
+  .data-list li button{white-space:nowrap;justify-self:end}
+  .data-list li a{overflow-wrap:anywhere}
+  @media(max-width:520px){
+    .data-list li{grid-template-columns:1fr;gap:8px;padding:12px}
+    .data-list li button{justify-self:start;width:auto}
+  }
+`;
+document.head.append(listStyle);
 
 // The app hands its own token in the URL fragment when it opens this panel, so the
 // page is already signed in for that one app. The fragment never leaves the browser.
@@ -55,13 +71,13 @@ export function appPage(key,label){
       </article>
 
       <article class="panel"><h2>Sessions</h2>
-        ${rows(sessions,'No active session. Sign in from the app to create one.',session=>`<li>${esc(session.device||'Unknown device')} · ${esc(when(session.last_used_at))} <button class="secondary" data-session="${esc(session.session_id)}">Sign out</button></li>`)}
+        ${rows(sessions,'No active session. Sign in from the app to create one.',session=>`<li><span><b>${esc(session.device||'Unknown device')}</b><small>Last used ${esc(when(session.last_used_at))}</small></span><button class="secondary" data-session="${esc(session.session_id)}">Sign out</button></li>`)}
         ${sessions.length?'<button class="danger" id="app-signout-all">Sign out this app everywhere</button>':''}
       </article>
 
       <div class="grid">
         <article class="panel"><h2>History</h2>
-          ${rows(box.data?.history,'No history stored.',item=>`<li>${esc(item.title||item.origin)} <small>${esc(when(item.visited_at))}</small></li>`)}
+          ${rows(box.data?.history,'No history stored.',item=>`<li><span><b>${esc(item.title||item.origin)}</b><small>${esc(when(item.visited_at))}</small></span></li>`)}
           ${counts.history?'<button class="danger" id="app-clear-history">Clear history</button>':''}
         </article>
         <article class="panel"><h2>Saved items</h2>

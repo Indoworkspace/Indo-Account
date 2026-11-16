@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-notifsoff1';
+import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261116-rowfix1';
 
 const u=user();
 
