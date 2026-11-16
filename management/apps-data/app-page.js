@@ -1,5 +1,5 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-blue1';
-import {Api} from '../../shared/api-client.js?v=20261116-blue1';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-sankalplogo1';
+import {Api} from '../../shared/api-client.js?v=20261116-sankalplogo1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
@@ -15,10 +15,11 @@ listStyle.textContent=`
   .data-list li a{overflow-wrap:anywhere}
   .panel h2{font-size:17px;margin:0 0 8px}
   .page-back{display:inline-block;margin:0 0 12px;font-size:13px}
-  .switch-row{display:flex;flex-wrap:nowrap;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid #e2e9f2}
+  .app-title{display:flex;align-items:center;gap:10px}.app-title-mark{width:34px;height:34px;object-fit:contain;flex:none}
+  .switch-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid #e2e9f2}
   .switch-row:last-child{border-bottom:0;padding-bottom:0}
-  .switch-row>div{min-width:0;flex:1 1 auto}
-  .switch-row .switch{flex:0 0 auto;margin-top:3px}
+  .switch-row>div{min-width:0}
+  .switch-row .switch{justify-self:end;flex:none}
   .switch-row .form-note{margin:4px 0 0}
   .switch-row>button,.switch-row>span.form-note{flex:0 0 auto;align-self:center;margin:0;text-align:right}
   @media(max-width:520px){
@@ -68,14 +69,14 @@ export function appPage(key,label){
 
     setup('apps-data',`
       <a class="secondary page-back" href="../index.html">← All apps</a>
-      <h1>${esc(label)} <span class="badge">${esc(status)}</span></h1>
+      <h1 class="app-title">${key==='SANKALPA'?'<img class="app-title-mark" src="../../../assets/branding/sankalp-mark-256.png" alt="">':''}<span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
       <p class="lead">Access and the data this app keeps in your Indo Account.</p>
 
       <article class="panel">
         <div class="switch-row"><div><b>App access</b><p class="form-note">Pausing stops new data from syncing. Other apps keep working.</p></div>
           <input class="switch" id="app-status" type="checkbox" ${box.status==='Active'?'checked':''} aria-label="App access"></div>
-        <div class="switch-row"><div><b>Connection</b><p class="form-note">${connected?`Linked ${esc(when(box.connected_at))} · last used ${esc(when(box.last_used_at))}`:'This app is not linked to your Indo Account.'}</p></div>
-          ${connected?'<button class="secondary" id="app-disconnect">Disconnect</button>':'<span class="form-note">Sign in from the app to link it.</span>'}</div>
+        <div class="switch-row"><div><b>Connection</b><p class="form-note">${connected?`Linked ${esc(when(box.connected_at))} · last used ${esc(when(box.last_used_at))}`:'Not linked yet — sign in from the app to connect it.'}</p></div>
+          ${connected?'<button class="secondary" id="app-disconnect">Disconnect</button>':''}</div>
       </article>
 
       <article class="panel"><h2>Sessions</h2>
@@ -145,7 +146,7 @@ export function appPage(key,label){
     // Adopt the handed identity before any setup() call: setup() sends the browser
     // to the sign-in page when it finds no local user, and a fresh WebView has none.
     await adoptHandedIdentity();
-    setup('apps-data',`<a class="secondary page-back" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
+    setup('apps-data',`<a class="secondary page-back" href="../index.html">← All apps</a><h1 class="app-title">${key==='SANKALPA'?`<img class="app-title-mark" src="../../../assets/branding/sankalp-mark-256.png" alt="">`:""}${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
     try{box=await Api.getApp(key);paint()}
     catch(error){setup('apps-data',`<a class="secondary page-back" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="form-note">${esc(error.message)}</p>`,'../../')}
   }

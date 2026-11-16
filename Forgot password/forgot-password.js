@@ -1,4 +1,4 @@
-import {PasswordReset} from '../shared/password-reset.js?v=20261116-blue1';
+import {PasswordReset} from '../shared/password-reset.js?v=20261116-sankalplogo1';
 
 const $=selector=>document.querySelector(selector);
 const steps=[null,$('#identify-step'),$('#verify-step'),$('#password-step')];
