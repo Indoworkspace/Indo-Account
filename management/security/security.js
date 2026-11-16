@@ -1,5 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-font1';
-import {Api} from '../../shared/api-client.js?v=20261116-font1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-eyemail1';
+import {Api} from '../../shared/api-client.js?v=20261116-eyemail1';
 
 const u=user();
 const icon={

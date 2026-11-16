@@ -214,7 +214,8 @@ def main() -> int:
     r = client.get("/api/v1/me/apps", headers=user_headers)
     check("list apps 200", r.status_code == 200, r.text)
     apps = r.json()["apps"]
-    check("three app boxes", len(apps) == 3, str([a["key"] for a in apps]))
+    check("four app boxes", len(apps) == 4, str([a["key"] for a in apps]))
+    check("eyemail slot is present", any(a["key"] == "EYEMAIL" for a in apps))
     check("nothing connected yet", all(a["connected"] is False for a in apps))
 
     print("handoff")
@@ -532,6 +533,63 @@ def main() -> int:
     check("blob is emptied", "history" not in blob_after and "saved" not in blob_after, str(blob_after))
     again = repo.migrate_app_boxes()
     check("running twice changes nothing", again["history"] == 0, str(again))
+
+    print("eyemail transport")
+    from app.emailer import EyemailSender
+    sent = []
+
+    class FakeResponse:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    def fake_urlopen(request, timeout=None):
+        import json as _json
+        sent.append({"url": request.full_url, "timeout": timeout,
+                     "headers": dict(request.header_items()), "body": _json.loads(request.data)})
+        return FakeResponse()
+
+    import urllib.request as _urllib
+    original_urlopen = _urllib.urlopen
+    _urllib.urlopen = fake_urlopen
+    try:
+        sender = EyemailSender("https://eyemail.example", secret="s3cret", timeout=4.0)
+        sender.send_signup_otp("someone@gmail.com", "123456")
+        check("otp goes to the eyemail endpoint", sent[-1]["url"].endswith("/api/internal/send-mail"), sent[-1]["url"])
+        check("api key header is sent", sent[-1]["headers"].get("X-api-key") == "s3cret", str(sent[-1]["headers"]))
+        check("otp body carries the code", "123456" in sent[-1]["body"]["body"])
+        check("recipient is passed through", sent[-1]["body"]["to"] == "someone@gmail.com")
+        check("sender name is passed through", sent[-1]["body"]["sender_name"] == "Indoworkspace Security")
+        check("timeout is applied", sent[-1]["timeout"] == 4.0, str(sent[-1]["timeout"]))
+        sender.send_account_alert("someone@gmail.com", subject="S", heading="H", message="M")
+        check("alerts use the same endpoint", sent[-1]["url"].endswith("/api/internal/send-mail"))
+    finally:
+        _urllib.urlopen = original_urlopen
+
+    print("eyemail mailbox hook")
+    import app.main as api_module
+    registered = []
+    def fake_register(profile):
+        registered.append(profile)
+    original_register = api_module.register_eyemail_mailbox
+    api_module.register_eyemail_mailbox = fake_register
+    try:
+        # the hook must be called for a signup, and must not break it when it raises
+        api_module.register_eyemail_mailbox({"user_id": "usr_x", "eyemail_id": "a@eyemail.in", "full_name": "A"})
+        check("hook receives the new profile", registered and registered[0]["eyemail_id"] == "a@eyemail.in")
+    finally:
+        api_module.register_eyemail_mailbox = original_register
+
+    def exploding(profile):
+        raise RuntimeError("eyemail is down")
+    api_module.register_eyemail_mailbox = exploding
+    try:
+        api_module.register_eyemail_mailbox({"user_id": "usr_x"})
+        check("a broken hook is the caller's problem to catch", False)
+    except RuntimeError:
+        check("the hook itself does not swallow", True)
+    finally:
+        api_module.register_eyemail_mailbox = original_register
 
     print("cascade")
     repo.delete_account(user_id)

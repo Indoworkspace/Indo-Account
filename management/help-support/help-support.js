@@ -1,4 +1,4 @@
-import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-font1';
+import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-eyemail1';
 
 const u=user();
 
