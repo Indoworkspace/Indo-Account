@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-logo1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-panelpass3';
 
 const u=user();
 const iconFiles={

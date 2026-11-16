@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-logo1';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-panelpass3';
 
 const u=user();
 const created=u.created_at?new Date(u.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}):'Not available';
