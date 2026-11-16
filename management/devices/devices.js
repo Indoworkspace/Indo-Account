@@ -1,5 +1,5 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-devices1';
-import {Api} from '../../shared/api-client.js?v=20261116-devices1';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-signoutfix1';
+import {Api} from '../../shared/api-client.js?v=20261116-signoutfix1';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
@@ -15,7 +15,7 @@ function render(){
     .filter(app=>app.sessions.length);
   const total=browsers.length+apps.reduce((sum,app)=>sum+app.sessions.length,0);
 
-  const browserRow=session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app||'Indo Account')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" type="button">${session.current?'Sign out this device':'Sign out this browser'}</button></div>`;
+  const browserRow=session=>`<div class="device session-row"><span class="session-device-icon"><img src="../../assets/icons/phosphor/devices-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device)}</b>${session.current?'<span class="badge current-badge">This device</span>':''}</div><p>${esc(session.app||'Indo Account')}</p><small>${esc(formatTime(session.last_active||session.created_at))}</small></div><button class="${session.current?'danger':'secondary'} session-signout" data-id="${esc(session.session_id||session.id)}" data-current="${session.current?'1':'0'}" type="button">${session.current?'Sign out this device':'Sign out this browser'}</button></div>`;
 
   const appRow=(app,session)=>`<div class="device session-row"><span class="session-device-icon app"><img src="../../assets/icons/phosphor/plugs-connected-duotone.svg" alt="" aria-hidden="true"></span><div class="session-copy"><div class="session-heading"><b>${esc(session.device||'Unknown device')}</b><span class="badge app-badge">${esc(app.label)}</span></div><p>Signed in through the ${esc(app.label)} app</p><small>${esc(formatTime(session.last_used_at||session.created_at))}</small></div><button class="secondary app-signout" data-app="${esc(app.key)}" data-session="${esc(session.session_id||session.id)}" type="button">Sign out ${esc(app.label)}</button></div>`;
 
@@ -48,13 +48,22 @@ function render(){
 
   document.querySelectorAll('.session-signout').forEach(button=>button.onclick=()=>{
     const session=browsers.find(item=>(item.session_id||item.id)===button.dataset.id);
-    const label=session?.current?'this device':session?.device||'this browser';
-    modal(`Sign out ${label}`,`<p>${session?.current?'You will be returned to the sign-in page.':'That browser will immediately lose access to your Indo Account. Nothing else is signed out.'}</p>`,()=>{
+    const isCurrent=button.dataset.current==='1';
+    const label=isCurrent?'this device':session?.device||'this browser';
+    modal(`Sign out ${label}`,`<p>${isCurrent?'You will be returned to the sign-in page.':'That browser will immediately lose access to your Indo Account. Nothing else is signed out.'}</p>`,async()=>{
       button.disabled=true;button.textContent='Signing out…';
-      Store.signoutSession(button.dataset.id).then(signedOutHere=>{
-        if(signedOutHere){location.replace(signInPage);return}
-        render();toast('Signed out.');
-      }).catch(error=>{button.disabled=false;button.textContent='Sign out';toast(error.message)});
+      try{
+        await Api.signoutSession(button.dataset.id);
+        // Only the session this browser is using sends you to sign-in. Anything else
+        // just leaves the list, so a stray tap cannot log you out of your own session.
+        if(isCurrent){location.replace(signInPage);return}
+        await Store.refresh();
+        render();
+        toast('Signed out.');
+      }catch(error){
+        button.disabled=false;button.textContent=isCurrent?'Sign out this device':'Sign out this browser';
+        toast(error.message);
+      }
     },true);
   });
 
