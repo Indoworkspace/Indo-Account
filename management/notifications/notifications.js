@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-palette1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-palette2';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],

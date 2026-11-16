@@ -1,4 +1,4 @@
-import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-palette1';
+import {setup,user,Store,esc} from '../shared/layout.js?v=20261116-palette2';
 
 const u=user();
 
