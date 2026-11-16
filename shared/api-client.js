@@ -54,6 +54,15 @@ export const Api={
   signoutSessions:includeCurrent=>request(`/api/v1/me/sessions?include_current=${includeCurrent?'true':'false'}`,{method:'DELETE'}),
   exportAccountData:verificationToken=>request('/api/v1/me/export',{method:'POST',body:{verification_token:verificationToken}}),
   createSupportRequest:(category,message)=>request('/api/v1/me/support',{method:'POST',body:{category,message}}),
+  listApps:()=>request('/api/v1/me/apps'),
+  getApp:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}`),
+  setAppStatus:(app,value)=>request(`/api/v1/me/apps/${encodeURIComponent(app)}`,{method:'PATCH',body:{status:value}}),
+  authorizeApp:(app,payload)=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/authorize`,{method:'POST',body:payload}),
+  revokeAppSessions:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/sessions`,{method:'DELETE'}),
+  revokeAppSession:(app,sessionId)=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/sessions/${encodeURIComponent(sessionId)}`,{method:'DELETE'}),
+  clearAppHistory:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/history`,{method:'DELETE'}),
+  clearAppData:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/data`,{method:'DELETE'}),
+  exportApp:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/export`),
   deleteAccount:(verificationToken='')=>request('/api/v1/me',{method:'DELETE',body:verificationToken?{verification_token:verificationToken}:{}})
 };
 
