@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-activitysel1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-notifsoff1';
 
 const u=user();
 const iconFiles={

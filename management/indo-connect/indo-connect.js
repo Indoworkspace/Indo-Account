@@ -1,4 +1,4 @@
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-activitysel1';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261116-notifsoff1';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',
