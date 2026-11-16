@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-palette1';
+import {appPage} from '../app-page.js?v=20261116-palette2';
 
 appPage('EYEBROWSE','Eyebrowse');
