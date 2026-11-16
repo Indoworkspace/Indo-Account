@@ -1,4 +1,4 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-cleanabout1';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-font1';
 
 const u=user();
 const created=u.created_at?new Date(u.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}):'Not available';

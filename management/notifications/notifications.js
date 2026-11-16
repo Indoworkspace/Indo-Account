@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-cleanabout1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-font1';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],
