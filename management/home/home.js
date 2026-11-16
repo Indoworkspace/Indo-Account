@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-buttons1';
-import {setup,user,esc} from '../shared/layout.js?v=20261116-buttons1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-buttons2';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-buttons2';
 
 const u=user();
 const apps=[
