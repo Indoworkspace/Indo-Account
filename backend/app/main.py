@@ -266,6 +266,10 @@ class AppSessionExchange(BaseModel):
     device: str = Field(default="Indo app", max_length=120)
 
 
+class SecurityEventDelete(BaseModel):
+    ids: list[str] | None = Field(default=None, max_length=200)
+
+
 class PanelSessionRequest(BaseModel):
     device: str = Field(default="Indo app", max_length=120)
 
@@ -978,6 +982,22 @@ def create_support_request(
     except (EmailConfigurationError, EmailDeliveryError):
         logger.exception("Support request succeeded but confirmation email failed")
     return {"reference": reference, "message": "Your support request was sent."}
+
+
+@app.delete("/api/v1/me/security-events")
+def delete_security_events(
+    user_id: Annotated[str, Depends(current_user)],
+    payload: SecurityEventDelete | None = None,
+) -> dict[str, int]:
+    ids = payload.ids if payload else None
+    removed = repository.delete_security_events(user_id, ids)
+    repository.record_security_event(
+        user_id,
+        "security",
+        "Security activity cleared",
+        f"{removed} entr{'ies were' if removed != 1 else 'y was'} removed from the security activity list.",
+    )
+    return {"removed": removed}
 
 
 @app.delete(

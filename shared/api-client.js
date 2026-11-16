@@ -85,6 +85,7 @@ export const Api={
   clearAppData:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/data`,{method:'DELETE'}),
   exportApp:app=>request(`/api/v1/me/apps/${encodeURIComponent(app)}/export`),
   appIdentity:()=>request('/api/v1/app/me'),
+  deleteSecurityEvents:ids=>request('/api/v1/me/security-events',{method:'DELETE',body:{ids:ids||null}}),
   deleteAccount:(verificationToken='')=>request('/api/v1/me',{method:'DELETE',body:verificationToken?{verification_token:verificationToken}:{}})
 };
 

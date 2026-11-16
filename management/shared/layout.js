@@ -1,5 +1,5 @@
-import {Store} from '../../shared/session-store.js?v=20261116-panelpass2';
-import {Api} from '../../shared/api-client.js?v=20261116-panelpass2';
+import {Store} from '../../shared/session-store.js?v=20261116-activitysel1';
+import {Api} from '../../shared/api-client.js?v=20261116-activitysel1';
 
 // The app trades its own token for a short-lived account session and opens this panel
 // with it in the fragment. Adopt it before any page decides to redirect, so every
