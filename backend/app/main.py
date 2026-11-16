@@ -326,14 +326,20 @@ def send_account_alert(
 ) -> None:
     notifications = state.get("notifications") or {}
     destination = str(state.get("secondary_email") or "").strip().lower()
+    wanted = preference or "account"
+    # One line per decision, so CloudWatch can answer "did a mail go out, and why not"
+    # without guessing. Only failures used to be logged, which made a quiet log look like
+    # proof that nothing was sent.
     if not destination or not state.get("secondary_email_verified"):
+        logger.info("alert skipped preference=%s reason=no_verified_destination", wanted)
         return
     # Nothing is sent unless the user turned that notification on. Verification codes
     # (OTP) are a separate path and are unaffected by these preferences.
-    wanted = preference or "account"
     if not notifications.get("security", False):
+        logger.info("alert skipped preference=%s reason=security_off", wanted)
         return
     if not notifications.get(wanted, False):
+        logger.info("alert skipped preference=%s reason=preference_off", wanted)
         return
     try:
         email_sender.send_account_alert(
@@ -342,6 +348,7 @@ def send_account_alert(
             heading=heading,
             message=message,
         )
+        logger.info("alert sent preference=%s", wanted)
     except (EmailConfigurationError, EmailDeliveryError):
         logger.exception("Account action succeeded but its notification email failed")
 
