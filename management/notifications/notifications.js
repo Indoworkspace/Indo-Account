@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-rowfix1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-devices1';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],
