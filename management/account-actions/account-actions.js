@@ -1,8 +1,8 @@
-import {setup,user,esc} from '../shared/layout.js?v=20261116-footer2';
+import {setup,user,esc} from '../shared/layout.js?v=20261116-poster1';
 
 const u=user();
 const created=u.created_at?new Date(u.created_at).toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'}):'Not available';
-setup('account-actions',`<h1>About &amp; account</h1><p class="lead">Your unified identity and shared data foundation for Indo services.</p>
+setup('account-actions',`<h1>About &amp; <span class="accent">account</span></h1><p class="poster">An <span class="accent">Indian</span> product company, building for India.</p><p class="lead">Your unified identity and shared data foundation for Indo services.</p>
 <section class="about-hero"><img class="about-mark" src="../../assets/branding/indo-mark.png" alt="" width="56" height="56"><div><h2>Indo Account</h2><p>${esc(u.eyemail_id)}</p></div><span class="badge">${esc(u.account_status||'ACTIVE')}</span></section>
 <section class="about-grid"><article><h3>Account details</h3><dl><div><dt>Account type</dt><dd>${esc(u.account_type||'Personal')}</dd></div><div><dt>Created</dt><dd>${esc(created)}</dd></div><div><dt>User ID</dt><dd>${esc(u.user_id)}</dd></div></dl></article><article><h3>Shared account data</h3><p>Your profile, language, recovery contacts, devices, security, notifications, and privacy controls are managed once for all Indo services.</p><a class="secondary" href="../personal-info/index.html">Manage profile</a></article></section>
 <section class="architecture-card"><h2>How your data is organized</h2><div class="architecture-grid"><div><span>1</span><b>Shared account profile</b><p>Identity and settings used across your Indo Account.</p></div><div><span>2</span><b>Separate app data spaces</b><p>Sankalp, Eyesearch, and Eyebrowse each keep only their own app-specific data.</p></div></div></section>
