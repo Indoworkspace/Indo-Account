@@ -286,6 +286,12 @@ def main() -> int:
     check("panel sees the session", len(box["sessions"]) == 1, str(box["sessions"]))
     check("panel sees counts", box["counts"]["saved"] == 1 and box["counts"]["history"] == 5, str(box["counts"]))
 
+    cleared_history = client.delete("/api/v1/me/apps/EYEBROWSE/history", headers=user_headers)
+    check("panel clears history", cleared_history.status_code == 200, cleared_history.text)
+    check("history gone, saved kept", cleared_history.json()["history"] == 0, cleared_history.text)
+    kept = client.get("/api/v1/me/apps/EYEBROWSE", headers=user_headers).json()
+    check("saved items survive a history clear", kept["counts"]["saved"] == 1, str(kept["counts"]))
+
     exported = client.get("/api/v1/me/apps/EYEBROWSE/export", headers=user_headers)
     check("export 200", exported.status_code == 200, exported.text)
     check("export has no token hashes", "token_hash" not in exported.text)

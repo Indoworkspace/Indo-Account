@@ -1074,6 +1074,11 @@ def revoke_one_app_session(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@app.delete("/api/v1/me/apps/{app}/history")
+def clear_app_history_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
+    return repository.clear_app_history(user_id, app)
+
+
 @app.delete("/api/v1/me/apps/{app}/data")
 def clear_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     return repository.clear_app_data(user_id, app)
