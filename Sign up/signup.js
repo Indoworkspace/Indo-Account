@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261115-indo-id1';
+import {Store} from '../shared/session-store.js?v=20261116-icons2';
 
 Store.init();
 const $=selector=>document.querySelector(selector),form=$('#signup-form');
