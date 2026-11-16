@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-buttons1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-buttons2';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],

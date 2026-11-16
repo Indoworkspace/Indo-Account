@@ -1,5 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-buttons1';
-import {Api} from '../../shared/api-client.js?v=20261116-buttons1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-buttons2';
+import {Api} from '../../shared/api-client.js?v=20261116-buttons2';
 
 const u=user();
 const icon={
@@ -29,7 +29,7 @@ setup('security',`<h1>Security &amp; sign-in</h1><p class="lead">Review sign-in 
 const style=document.createElement('style');
 style.textContent=`
   .security-section{margin:0 0 24px}.security-section h2{font-size:18px;margin:0 0 3px}.section-note{margin:0 0 11px;color:#465468;font-size:14px}
-  .security-activity-list,.security-list{overflow:hidden;background:#fff;border:1px solid #cfd8e5;border-radius:16px}.security-activity{display:grid;grid-template-columns:38px minmax(0,1fr);gap:14px;align-items:center;padding:15px 18px}.security-item{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:14px;align-items:center;padding:15px 18px}.security-activity{border-bottom:1px solid #d8e0ea}.security-activity:last-child{border-bottom:0}.security-activity b,.security-activity small,.security-item b,.security-item small{display:block}.security-activity small,.security-item small{margin-top:3px;color:#465468;font-size:13px;overflow-wrap:anywhere}.security-item{width:100%;border:0;border-bottom:1px solid #d8e0ea;background:#fff;text-align:left;color:#1f2937}.security-item:last-child{border-bottom:0}.security-item:not(.static):hover{background:#eef3fb;cursor:pointer}.security-icon{width:32px;height:32px;display:grid;place-items:center;color:#38516f}.security-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.security-arrow{font-size:25px;color:#2457d6}.security-item .switch{justify-self:end}.password-panel{margin-top:-7px}.security-chips{display:flex;flex-wrap:wrap;gap:8px}.security-chips button{border:1px solid #bdc8d7;border-radius:9px;background:#fff;padding:8px 12px;color:#263348;font-weight:700;font-size:13px}.text-action{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:1px solid #cfd8e5;border-top:0;border-radius:0 0 16px 16px;background:#fff;color:#1f2937;font-weight:700}.text-action span{font-size:25px;color:#2457d6}
+  .security-activity-list,.security-list{overflow:hidden;background:#fff;border:1px solid #cfd8e5;border-radius:16px}.security-activity{display:grid;grid-template-columns:38px minmax(0,1fr);gap:14px;align-items:center;padding:15px 18px}.security-item{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:14px;align-items:center;padding:15px 18px}.security-activity{border-bottom:1px solid #d8e0ea}.security-activity:last-child{border-bottom:0}.security-activity b,.security-activity small,.security-item b,.security-item small{display:block}.security-activity small,.security-item small{margin-top:3px;color:#465468;font-size:13px;overflow-wrap:anywhere}.security-item{width:100%;border:0;border-bottom:1px solid #d8e0ea;background:#fff;text-align:left;color:#1f2937}.security-item:last-child{border-bottom:0}.security-item:not(.static):hover{background:#eef3fb;cursor:pointer}.security-icon{width:32px;height:32px;display:grid;place-items:center;color:#38516f}.security-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.security-arrow{font-size:25px;color:#2457d6}.security-item .switch{justify-self:end}.password-panel{margin-top:-7px}.security-chips{display:flex;flex-wrap:wrap;gap:8px}.security-chips button{font-size:13px;padding:9px 13px}.text-action{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border:1px solid #cfd8e5;border-top:0;border-radius:0 0 16px 16px;background:#fff;color:#1f2937;font-weight:700}.text-action span{font-size:25px;color:#2457d6}
   @media(max-width:760px){.security-section{margin-bottom:20px}.security-section h2{font-size:17px}.section-note{font-size:13px}.security-activity{grid-template-columns:30px minmax(0,1fr);gap:10px;padding:13px 12px}.security-item{grid-template-columns:30px minmax(0,1fr) auto;gap:10px;padding:13px 12px}.security-icon{width:28px;height:28px}.security-icon svg{width:19px;height:19px}.security-activity small,.security-item small{font-size:12px}.security-chips{display:grid;grid-template-columns:1fr 1fr}.security-chips button:last-child{grid-column:1/-1}.text-action{padding:10px 12px;font-size:14px}.password-panel{margin-top:-4px}.password-panel .section-title{margin-bottom:2px}}
 `;
 document.head.append(style);
@@ -101,8 +101,8 @@ document.querySelectorAll('[data-coming]').forEach(button=>button.onclick=()=>to
     .security-activity.selected .activity-tick{border-color:#2457d6;background:#2457d6;box-shadow:inset 0 0 0 3px #fff}
     .activity-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid #dce3ed;border-radius:14px;background:#fff;margin:0 0 10px;font-size:13px}
     .activity-bar b{margin-right:auto}
-    .activity-bar button{border:1px solid #bdc8d7;border-radius:9px;background:#fff;padding:7px 11px;font-weight:700;color:#263348}
-    .activity-bar button.danger{border-color:#e5b4b4;color:#b42318}
+    
+    
     .security-activity{cursor:default;user-select:none}
   `;
   document.head.append(style);
@@ -123,9 +123,9 @@ document.querySelectorAll('[data-coming]').forEach(button=>button.onclick=()=>to
     bar=document.createElement('div');
     bar.className='activity-bar';
     bar.innerHTML=`<b><span id="activity-count">1</span> selected</b>
-      <button type="button" id="activity-all">Select all</button>
+      <button class="secondary" type="button" id="activity-all">Select all</button>
       <button type="button" class="danger" id="activity-delete">Delete</button>
-      <button type="button" id="activity-cancel">Cancel</button>`;
+      <button class="secondary" type="button" id="activity-cancel">Cancel</button>`;
     list.parentElement.insertBefore(bar,list);
     bar.querySelector('#activity-all').onclick=()=>{rows.forEach(row=>selected.add(row.dataset.eventId));paint();update()};
     bar.querySelector('#activity-cancel').onclick=exit;
