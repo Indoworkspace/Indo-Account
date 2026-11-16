@@ -1,5 +1,5 @@
-import {setup,esc,$,toast} from '../shared/layout.js?v=20261116-approws1';
-import {Api} from '../../shared/api-client.js?v=20261116-approws1';
+import {setup,esc,$,toast} from '../shared/layout.js?v=20261116-audit1';
+import {Api} from '../../shared/api-client.js?v=20261116-audit1';
 
 const apps=[
   ['SANKALPA','Sankalp','AI Assistant','sankalp/index.html','','Chat history, saved items and AI memory.'],
@@ -23,7 +23,7 @@ function paint(boxes){
 
 async function start(){
   setup('','<h1>Your Indo apps</h1><p class="lead">Loading…</p>');
-  try{const result=await Api.listApps();paint(result.apps||[])}
+  try{const result=await Api.listApps();paint(Object.values(result.apps||{}))}
   catch(error){setup('',`<h1>Your Indo apps</h1><p class="form-note">${esc(error.message)}</p>`);toast(error.message)}
 }
 
