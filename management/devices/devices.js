@@ -1,6 +1,6 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-icons2';
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-icons2';
-import {Api} from '../../shared/api-client.js?v=20261116-icons2';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261116-palette1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-palette1';
+import {Api} from '../../shared/api-client.js?v=20261116-palette1';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
@@ -34,15 +34,15 @@ function render(){
   document.getElementById('device-layout-style')?.remove();
   const style=document.createElement('style');style.id='device-layout-style';
   style.textContent=`
-    .sessions-title{align-items:center}.sessions-title h2{margin:0}.session-count{margin:3px 0 0;color:#607087;font-size:12px}.sessions-title .danger{margin-left:auto}.sessions-title .danger:disabled{opacity:.5;cursor:not-allowed}
+    .sessions-title{align-items:center}.sessions-title h2{margin:0}.session-count{margin:3px 0 0;color:#465468;font-size:12px}.sessions-title .danger{margin-left:auto}.sessions-title .danger:disabled{opacity:.5;cursor:not-allowed}
     .session-group{margin-top:14px}.group-title h2{margin:0;font-size:16px}
     .session-row{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;overflow:hidden}
-    .session-row+.session-row,.app-group-head+.session-row{border-top:1px solid #eef1f6}
-    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#f2f5f9;color:#41546b;flex:none}.session-device-icon.app{background:#f2f5f9;color:#41546b}
-    .session-copy{min-width:0;overflow:hidden}.session-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.session-copy b,.session-copy p,.session-copy small{overflow-wrap:anywhere;word-break:break-word}.session-copy b{display:block;line-height:1.3}.session-copy p{margin:3px 0;color:#607087}.session-copy small{display:block;color:#78869a;font-size:12px}
+    .session-row+.session-row,.app-group-head+.session-row{border-top:1px solid #e2e9f2}
+    .session-device-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#e4eaf3;color:#2c3a4e;flex:none}.session-device-icon.app{background:#e4eaf3;color:#2c3a4e}
+    .session-copy{min-width:0;overflow:hidden}.session-heading{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}.session-copy b,.session-copy p,.session-copy small{overflow-wrap:anywhere;word-break:break-word}.session-copy b{display:block;line-height:1.3}.session-copy p{margin:3px 0;color:#465468}.session-copy small{display:block;color:#5a6a80;font-size:12px}
     .current-badge{padding:3px 7px}
     .session-signout,.app-signout{justify-self:end;white-space:nowrap;max-width:100%}
-    .app-group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 0 6px}.app-group-head:not(:first-child){border-top:1px solid #eef1f6}.app-group-head b{margin-right:auto;font-size:15px;overflow-wrap:anywhere}
+    .app-group-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 0 6px}.app-group-head:not(:first-child){border-top:1px solid #e2e9f2}.app-group-head b{margin-right:auto;font-size:15px;overflow-wrap:anywhere}
     @media(max-width:760px){.sessions-title{display:grid;grid-template-columns:1fr}.sessions-title .danger{width:100%;margin:8px 0 0}.session-row{grid-template-columns:36px minmax(0,1fr) auto;gap:10px}.session-device-icon{width:34px;height:34px}.session-device-icon img{width:22px;height:22px}.session-signout,.app-signout{align-self:center;padding:9px 11px;white-space:normal;text-align:center;max-width:130px}}
     @media(max-width:430px){.session-row{grid-template-columns:36px minmax(0,1fr)}.session-device-icon{grid-row:1}.session-signout,.app-signout{grid-column:1/-1;justify-self:stretch;width:100%;max-width:none}.app-group-head{display:grid;grid-template-columns:1fr;gap:8px}.app-group-head button{width:100%}}
   `;
