@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261116-blue1';
+import {Store} from '../shared/session-store.js?v=20261116-sankalplogo1';
 
 Store.init();
 const $=selector=>document.querySelector(selector),form=$('#signup-form');
