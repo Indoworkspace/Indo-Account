@@ -778,6 +778,7 @@ def request_recovery_email_otp(
 def verify_recovery_email_otp(
     payload: RecoveryEmailOtpVerify,
     user_id: Annotated[str, Depends(current_user)],
+    token: Annotated[str, Depends(bearer_token)],
 ) -> dict[str, Any]:
     if len(settings.otp_hash_secret) < 32:
         raise EmailConfigurationError("Email verification is not configured yet.")
@@ -790,6 +791,12 @@ def verify_recovery_email_otp(
     )
     previous = repository.get_account_state(user_id)
     state = repository.verify_recovery_email_otp(user_id, email, code_hash)
+    # The recovery email is the other way into the account, so the same rule applies.
+    try:
+        keep = repository.current_session_id(user_id, token)
+    except AuthenticationError:
+        keep = None
+    repository.revoke_all_sessions(user_id, keep_session_id=keep)
     send_account_alert(
         previous,
         subject="Your Indo Account recovery email changed",
@@ -893,7 +900,11 @@ def update_two_step(payload: TwoStepUpdate, user_id: Annotated[str, Depends(curr
 
 
 @app.post("/api/v1/me/password", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
-def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(current_user)]) -> Response:
+def change_password(
+    payload: PasswordChange,
+    user_id: Annotated[str, Depends(current_user)],
+    token: Annotated[str, Depends(bearer_token)],
+) -> Response:
     try:
         repository.change_password(
             user_id,
@@ -904,6 +915,13 @@ def change_password(payload: PasswordChange, user_id: Annotated[str, Depends(cur
         )
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(error)) from error
+    # A new password must not leave old sessions alive: a stolen device keeps its
+    # token otherwise. The device that made the change stays signed in.
+    try:
+        keep = repository.current_session_id(user_id, token)
+    except AuthenticationError:
+        keep = None
+    repository.revoke_all_sessions(user_id, keep_session_id=keep)
     send_account_alert(
         repository.get_account_state(user_id),
         subject="Your Indo Account password changed",

@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main as api  # noqa: E402
 from app.repository import DynamoAccountRepository  # noqa: E402
+from app.security import hash_password  # noqa: E402
 
 
 class ConditionalCheckFailed(Exception):
@@ -185,6 +186,14 @@ def main() -> int:
             "secondary_email": "tester@example.com",
         }
     )
+    table.put_item(
+        Item={
+            "PK": f"USER#{user_id}",
+            "SK": "AUTH#PASSWORD",
+            "entity_type": "AUTH",
+            "password_hash": hash_password("Str0ng!pass"),
+        }
+    )
     session_token = repo.create_bearer_session(user_id, "Chrome on Linux")
     user_headers = {"Authorization": f"Bearer {session_token}"}
 
@@ -343,6 +352,29 @@ def main() -> int:
     check("revoked token stops working", after.status_code == 401, after.text)
     disconnected = client.get("/api/v1/me/apps/EYEBROWSE", headers=user_headers).json()
     check("box shows disconnected", disconnected["connected"] is False, str(disconnected["connected"]))
+
+    print("password change revokes other sessions")
+    second_token = repo.create_bearer_session(user_id, "Firefox on Linux")
+    second_headers = {"Authorization": f"Bearer {second_token}"}
+    app_token_again = client.post(
+        "/api/v1/me/apps/EYEBROWSE/authorize",
+        headers=user_headers,
+        json={"redirect": "indobrowse://auth", "code_challenge": pkce(verifier), "state": "s2"},
+    ).json()["redirect_url"].split("code=")[1].split("&")[0]
+    fresh_app = client.post(
+        "/api/v1/app/session",
+        json={"app": "EYEBROWSE", "code": app_token_again, "code_verifier": verifier, "device": "Pixel"},
+    ).json()["token"]
+    changed = client.post(
+        "/api/v1/me/password",
+        headers=user_headers,
+        json={"current_password": "Str0ng!pass", "new_password": "N3w!stronger"},
+    )
+    check("password change accepted or verification required", changed.status_code in {204, 400}, changed.text)
+    if changed.status_code == 204:
+        check("current session survives", client.get("/api/v1/me", headers=user_headers).status_code == 200)
+        check("other browser session revoked", client.get("/api/v1/me", headers=second_headers).status_code == 401)
+        check("app session revoked", client.get("/api/v1/app/me", headers={"Authorization": f"Bearer {fresh_app}"}).status_code == 401)
 
     print("cascade")
     repo.delete_account(user_id)

@@ -16,9 +16,11 @@ if(handed){
   sessionStorage.setItem('indo_app_panel','1');
   history.replaceState({},'',location.pathname+location.search);
   addEventListener('pagehide',()=>{
-    Api.clearSession();
+    // Only the app's own token dies here. A browser session the user already had
+    // must survive closing this screen.
+    Api.clearAppToken();
     sessionStorage.removeItem('indo_app_panel');
-    localStorage.removeItem('indo_active_session');
+    if(!Api.hasSession())localStorage.removeItem('indo_active_session');
   });
 }
 
