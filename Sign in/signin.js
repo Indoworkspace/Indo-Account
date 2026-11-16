@@ -4,28 +4,33 @@ if(new URLSearchParams(location.search).get('reset')==='success'){const message=
 
 const appName=key=>key==='EYEBROWSE'?'Eyebrowse':key==='EYESEARCH'?'Eyesearch':'Sankalp';
 // A Custom Tab blocks an automatic jump to a custom scheme because there is no tap
-// behind it. So we try once, and always leave a real link the user can tap.
+// behind it. Try once, and only if the page is still here a moment later offer a tap,
+// so the in-app WebView path never shows a button it does not need.
 function returnToApp(url,key){
   const name=appName(key),message=$('#message');
   message.className='success';
   message.textContent=`Signed in. Returning to ${name}…`;
-  submit.textContent=`Open ${name}`;
-  submit.disabled=false;
   form.removeAttribute('aria-busy');
-  const go=event=>{if(event)event.preventDefault();location.href=url};
-  submit.onclick=go;
-  form.onsubmit=go;
-  if(!document.querySelector('#return-to-app')){
-    const link=document.createElement('a');
-    link.id='return-to-app';
-    link.className='primary';
-    link.href=url;
-    link.textContent=`Return to ${name}`;
-    link.style.cssText='display:block;text-align:center;margin-top:12px';
-    submit.insertAdjacentElement('afterend',link);
-  }
   location.href=url;
+  setTimeout(()=>{
+    if(document.visibilityState==='hidden')return;
+    submit.textContent=`Open ${name}`;
+    submit.disabled=false;
+    const go=event=>{if(event)event.preventDefault();location.href=url};
+    submit.onclick=go;
+    form.onsubmit=go;
+    if(!document.querySelector('#return-to-app')){
+      const link=document.createElement('a');
+      link.id='return-to-app';
+      link.className='secondary';
+      link.href=url;
+      link.textContent=`Return to ${name}`;
+      link.style.cssText='display:block;text-align:center;margin-top:12px';
+      submit.insertAdjacentElement('afterend',link);
+    }
+  },1200);
 }
+
 form.addEventListener('input',()=>{const message=$('#message');if(message.classList.contains('error'))message.textContent=''});
 const handoff=()=>{const params=new URLSearchParams(location.search),app=(params.get('app')||'').toUpperCase(),redirect=params.get('redirect')||'',challenge=params.get('code_challenge')||'';if(!['SANKALPA','EYESEARCH','EYEBROWSE'].includes(app)||!redirect||!challenge)return null;return{app,redirect,code_challenge:challenge,state:params.get('state')||''}};
 const pending=handoff();

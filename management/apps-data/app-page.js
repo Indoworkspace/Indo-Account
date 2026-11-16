@@ -1,4 +1,4 @@
-import {setup,esc,$,toast,modal,download} from '../shared/layout.js?v=20261116-paneltoken1';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-paneltoken1';
 import {Api} from '../../shared/api-client.js?v=20261116-paneltoken1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
@@ -13,8 +13,21 @@ const fragmentToken=()=>{
 const handed=fragmentToken();
 if(handed){
   Api.setSession(handed);
+  sessionStorage.setItem('indo_app_panel','1');
   history.replaceState({},'',location.pathname+location.search);
-  addEventListener('pagehide',()=>Api.clearSession());
+  addEventListener('pagehide',()=>{
+    Api.clearSession();
+    sessionStorage.removeItem('indo_app_panel');
+    localStorage.removeItem('indo_active_session');
+  });
+}
+
+// The app opens this page already signed in, so the browser-local profile is empty.
+// Ask the API who the user is and adopt that identity before the shell draws,
+// otherwise the panel would bounce to the sign-in page.
+async function adoptHandedIdentity(){
+  if(!handed)return;
+  try{Store.adoptIdentity(await Api.appIdentity())}catch(error){/* the page shows the API error itself */}
 }
 
 export function appPage(key,label){
@@ -104,6 +117,7 @@ export function appPage(key,label){
 
   async function load(){
     setup('apps-data',`<h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
+    await adoptHandedIdentity();
     try{box=await Api.getApp(key);paint()}
     catch(error){setup('apps-data',`<a class="secondary" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="form-note">${esc(error.message)}</p>`,'../../')}
   }
