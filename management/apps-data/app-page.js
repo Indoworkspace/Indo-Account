@@ -1,21 +1,21 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-icons2';
-import {Api} from '../../shared/api-client.js?v=20261116-icons2';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-palette1';
+import {Api} from '../../shared/api-client.js?v=20261116-palette1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
 
 const listStyle=document.createElement('style');
 listStyle.textContent=`
-  .data-list{list-style:none;margin:0;padding:0;background:#fff;border:1px solid #e1e7ef;border-radius:14px;overflow:hidden}
-  .data-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #e7ebf1}
+  .data-list{list-style:none;margin:0;padding:0;background:#fff;border:1px solid #cfd8e5;border-radius:14px;overflow:hidden}
+  .data-list li{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #d8e0ea}
   .data-list li:last-child{border-bottom:0}
   .data-list li b{display:block;font-size:14px;overflow-wrap:anywhere}
-  .data-list li small{display:block;margin-top:2px;color:#607087;font-size:12px;overflow-wrap:anywhere}
+  .data-list li small{display:block;margin-top:2px;color:#465468;font-size:12px;overflow-wrap:anywhere}
   .data-list li button{white-space:nowrap;justify-self:end}
   .data-list li a{overflow-wrap:anywhere}
   .panel h2{font-size:17px;margin:0 0 8px}
   .page-back{display:inline-block;margin:0 0 12px;font-size:13px}
-  .switch-row{display:flex;flex-wrap:nowrap;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid #eef1f6}
+  .switch-row{display:flex;flex-wrap:nowrap;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid #e2e9f2}
   .switch-row:last-child{border-bottom:0;padding-bottom:0}
   .switch-row>div{min-width:0;flex:1 1 auto}
   .switch-row .switch{flex:0 0 auto;margin-top:3px}
