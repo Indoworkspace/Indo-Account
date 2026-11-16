@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-eyemail1';
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-eyemail1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-font1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-font1';
 
 const u=user();
 const rowIcon={id:'id',name:'user',nickname:'tag',gender:'gender',email:'envelope',phone:'phone',birthday:'cake',language:'translate',home:'house',work:'briefcase',other:'pin'};

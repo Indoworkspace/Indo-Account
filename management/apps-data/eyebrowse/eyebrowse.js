@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-eyemail1';
+import {appPage} from '../app-page.js?v=20261116-font1';
 
 appPage('EYEBROWSE','Eyebrowse');

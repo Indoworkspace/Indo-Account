@@ -80,7 +80,6 @@ class DynamoAccountRepository:
         "SANKALPA": {"name": "Sankalp", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "memory": [], "preferences": {}}},
         "EYESEARCH": {"name": "Eyesearch Search Engine", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
         "EYEBROWSE": {"name": "Eyebrowse Browser", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"history": [], "saved": [], "preferences": {}}},
-        "EYEMAIL": {"name": "Eyemail", "status": "Active", "connected": False, "plan": "Not connected", "quota": "No usage yet", "renewal": "—", "last_used": "Not yet used", "data": {"preferences": {}}},
     }
 
     def __init__(
