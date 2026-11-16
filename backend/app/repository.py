@@ -1411,7 +1411,8 @@ class DynamoAccountRepository:
                 self.table.update_item(
                     Key={"PK": session["PK"], "SK": session["SK"]},
                     UpdateExpression="SET last_active = :active, last_active_epoch = :epoch",
-                    ConditionExpression="token_hash = :digest AND ttl > :now",
+                    ConditionExpression="token_hash = :digest AND #ttl > :now",
+                    ExpressionAttributeNames={"#ttl": "ttl"},
                     ExpressionAttributeValues={
                         ":active": utc_now(),
                         ":epoch": now,

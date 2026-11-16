@@ -30,6 +30,13 @@ class ConditionalCheckFailed(Exception):
     pass
 
 
+class ReservedWord(Exception):
+    """Stands in for DynamoDB rejecting a reserved keyword in an expression."""
+
+
+RESERVED = {"ttl", "name", "status", "data", "size", "value", "type", "state"}
+
+
 class FakeClient:
     class exceptions:
         ConditionalCheckFailedException = ConditionalCheckFailed
@@ -93,6 +100,11 @@ class FakeTable:
         self.items.pop(self._key(Key), None)
 
     def update_item(self, Key, UpdateExpression, ConditionExpression=None, ExpressionAttributeValues=None, ExpressionAttributeNames=None):  # noqa: N803
+        aliases = set((ExpressionAttributeNames or {}).values())
+        for expression in (UpdateExpression or "", ConditionExpression or ""):
+            for word in RESERVED - aliases:
+                if f" {word} " in f" {expression} ":
+                    raise ReservedWord(f"reserved keyword used without an alias: {word}")
         item = self.items.get(self._key(Key))
         if not item:
             raise ConditionalCheckFailed()
@@ -274,6 +286,13 @@ def main() -> int:
     check("app token rejected on panel door", panel_with_app_token.status_code in {401, 403}, panel_with_app_token.text)
     app_door_with_user_token = client.get("/api/v1/app/me", headers=user_headers)
     check("account session rejected on app door", app_door_with_user_token.status_code in {401, 403}, app_door_with_user_token.text)
+
+    print("session activity throttle")
+    repo.session_activity_update_seconds = 0
+    for key in [key for key in table.items if key[1].startswith("SESSION#")]:
+        table.items[key]["last_active_epoch"] = 0
+    check("activity update survives DynamoDB reserved words", client.get("/api/v1/me", headers=user_headers).status_code == 200)
+    repo.session_activity_update_seconds = 300
 
     print("pause and clear")
     paused = client.patch("/api/v1/me/apps/EYEBROWSE", headers=user_headers, json={"status": "Paused"})
