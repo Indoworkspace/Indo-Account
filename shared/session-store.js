@@ -65,6 +65,14 @@ Store.updateNotifications=async changes=>{const data=read(),user=activeUser(data
 Store.exportData=async(verificationToken='')=>{const user=Store.current();if(!user)throw Error('Please sign in again.');if(Api.hasSession())return Api.exportAccountData(verificationToken);return{export_version:'1.0',exported_at:now(),account:{user_id:user.user_id,indo_id:user.eyemail_id,account_type:user.account_type,account_status:user.account_status,created_at:user.created_at},profile:{full_name:user.full_name,nickname:user.nickname,gender:user.gender,date_of_birth:user.dob,preferred_language:user.language,profile_photo:user.profile_photo||'',recovery_email:user.secondary_email,recovery_email_verified:!!user.secondary_email_verified,mobile_number:user.phone,mobile_number_verified:!!user.phone_verified,addresses:{home:user.home_address,work:user.work_address,other:user.other_address}},apps:clone(user.apps||{}),connections:clone(user.oauth_connections||[]),sessions:clone(user.sessions||[]),security:{two_step:!!user.two_step,events:clone(user.security_events||[])},notifications:clone(user.notifications||{}),billing:clone(user.billing||{}),invoices:clone(user.invoices||[])}};
 Store.createSupportRequest=(category,message)=>Api.createSupportRequest(category,message);
 
+Store.adoptIdentity=identity=>{
+  const data=read(),userId=identity.user_id;
+  const minimal={user_id:userId,eyemail_id:identity.indo_id,full_name:identity.full_name,nickname:identity.nickname,language:identity.language,remote_managed:true,app_scoped:true,sessions:[],security_events:[],oauth_connections:[],invoices:[],notifications:{},apps:{}};
+  const index=data.users.findIndex(item=>item.user_id===userId);
+  if(index===-1)data.users.push(minimal);else data.users[index]={...data.users[index],...minimal};
+  write(data);localStorage.setItem(ACTIVE_USER_KEY,userId);return minimal;
+};
+
 Store.localCreate=localCreate;
 Store.localLogin=localLogin;
 
