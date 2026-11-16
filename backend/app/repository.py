@@ -1982,6 +1982,168 @@ class DynamoAccountRepository:
     def clean_text(value: str, limit: int) -> str:
         return " ".join(str(value or "").split())[:limit]
 
+    # ---- history and saved items -------------------------------------------------
+    # Each entry is its own small item. Rewriting the whole box for one visit cost ~130
+    # write units against 25 per second; one item costs one.
+    HISTORY = "HIST"
+    SAVED = "SAVE"
+
+    @staticmethod
+    def _entry_sort(entry: dict[str, Any]) -> str:
+        stamp = str(entry.get("visited_at") or entry.get("added_at") or utc_now())
+        entry_id = str(entry.get("id") or uuid4().hex[:12])
+        return f"{stamp}#{entry_id}"
+
+    def _entry_prefix(self, kind: str, app: str) -> str:
+        return f"{kind}#{app}#"
+
+    def _entry_key(self, user_id: str, kind: str, app: str, sort: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"{self._entry_prefix(kind, app)}{sort}"}
+
+    def _list_entries(
+        self,
+        user_id: str,
+        kind: str,
+        app: str,
+        *,
+        limit: int | None = None,
+        newest_first: bool = True,
+    ) -> list[dict[str, Any]]:
+        kwargs: dict[str, Any] = {
+            "KeyConditionExpression": "PK = :pk AND begins_with(SK, :prefix)",
+            "ExpressionAttributeValues": {":pk": f"USER#{user_id}", ":prefix": self._entry_prefix(kind, app)},
+            "ConsistentRead": True,
+        }
+        if limit:
+            kwargs["Limit"] = max(1, int(limit))
+        if newest_first:
+            kwargs["ScanIndexForward"] = False
+        response = self.table.query(**kwargs)
+        rows = list(response.get("Items", []))
+        rows.sort(key=lambda row: str(row.get("SK", "")), reverse=newest_first)
+        return [self._entry_payload(row) for row in rows]
+
+    def _count_entries(self, user_id: str, kind: str, app: str) -> int:
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":prefix": self._entry_prefix(kind, app)},
+            Select="COUNT",
+            ConsistentRead=True,
+        )
+        return int(response.get("Count", 0))
+
+    @staticmethod
+    def _entry_payload(item: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(item.get("entry") or {})
+        if not payload:
+            payload = {key: value for key, value in item.items() if key not in {"PK", "SK", "entity_type", "entry"}}
+        return payload
+
+    def _put_entry(self, user_id: str, kind: str, app: str, entry: dict[str, Any]) -> None:
+        sort = self._entry_sort(entry)
+        self.table.put_item(
+            Item={
+                **self._entry_key(user_id, kind, app, sort),
+                "entity_type": "APP_HISTORY" if kind == self.HISTORY else "APP_SAVED",
+                "user_id": user_id,
+                "app": app,
+                "entry": entry,
+                "sort_key": sort,
+                "created_at": entry.get("visited_at") or entry.get("added_at") or utc_now(),
+            }
+        )
+
+    def _trim_entries(self, user_id: str, kind: str, app: str, limit: int) -> None:
+        total = self._count_entries(user_id, kind, app)
+        excess = total - limit
+        if excess <= 0:
+            return
+        oldest = self._list_entries(user_id, kind, app, limit=excess, newest_first=False)
+        for entry in oldest:
+            self.table.delete_item(Key=self._entry_key(user_id, kind, app, self._entry_sort(entry)))
+
+    def _delete_entry(self, user_id: str, kind: str, app: str, entry_id: str) -> bool:
+        for entry in self._list_entries(user_id, kind, app):
+            if str(entry.get("id")) == str(entry_id):
+                self.table.delete_item(Key=self._entry_key(user_id, kind, app, self._entry_sort(entry)))
+                return True
+        return False
+
+    def _delete_all_entries(self, user_id: str, kind: str, app: str) -> int:
+        entries = self._list_entries(user_id, kind, app)
+        for entry in entries:
+            self.table.delete_item(Key=self._entry_key(user_id, kind, app, self._entry_sort(entry)))
+        return len(entries)
+
+    def migrate_app_boxes(self, *, dry_run: bool = False) -> dict[str, int]:
+        """Move history and saved entries that still live inside a box blob into their own
+        items. Safe to run more than once: a box with nothing left inside is skipped."""
+        moved_history = 0
+        moved_saved = 0
+        boxes = 0
+        scan_kwargs: dict[str, Any] = {
+            "FilterExpression": "entity_type = :kind",
+            "ExpressionAttributeValues": {":kind": "APP_STATE"},
+        }
+        while True:
+            response = self.table.scan(**scan_kwargs)
+            for item in response.get("Items", []):
+                state = item.get("state") or {}
+                data = state.get("data") or {}
+                history = data.get("history") or []
+                saved = data.get("saved") or []
+                if not history and not saved:
+                    continue
+                boxes += 1
+                partition = str(item.get("PK", ""))
+                user_id = partition.removeprefix("USER#")
+                app = str(item.get("SK", "")).split("#")[1] if "#" in str(item.get("SK", "")) else ""
+                if not user_id or not app:
+                    continue
+                if not dry_run:
+                    for entry in history:
+                        self._put_entry(user_id, self.HISTORY, app, entry)
+                        moved_history += 1
+                    for entry in saved:
+                        self._put_entry(user_id, self.SAVED, app, entry)
+                        moved_saved += 1
+                    data.pop("history", None)
+                    data.pop("saved", None)
+                    state["data"] = data
+                    self.table.put_item(Item={**{k: v for k, v in item.items() if k in ("PK", "SK")}, "entity_type": "APP_STATE", "state": state, "updated_at": utc_now()})
+                else:
+                    moved_history += len(history)
+                    moved_saved += len(saved)
+            if "LastEvaluatedKey" not in response:
+                break
+            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+        return {"boxes": boxes, "history": moved_history, "saved": moved_saved, "dry_run": int(dry_run)}
+
+    def _page_entries(self, user_id: str, kind: str, app: str, limit: int, cursor: str | None) -> dict[str, Any]:
+        size = max(1, min(limit, 100))
+        items = self._list_entries(user_id, kind, app, newest_first=True)
+        start = 0
+        if cursor:
+            start = next((index + 1 for index, item in enumerate(items) if item.get("id") == cursor), 0)
+        page = items[start : start + size]
+        next_cursor = page[-1]["id"] if len(items) > start + len(page) else None
+        return {"items": page, "next_cursor": next_cursor, "total": len(items)}
+
+    def _touch_app(self, user_id: str, app: str) -> None:
+        """Update only the box's timestamp, without rewriting the box."""
+        try:
+            self.table.update_item(
+                Key=self._app_state_key(user_id, app),
+                UpdateExpression="SET last_used_at = :now",
+                ExpressionAttributeValues={":now": utc_now()},
+            )
+        except Exception:
+            # A missing box is created on the next real write; the visit itself already saved.
+            pass
+
+    def _display_limit(self) -> int:
+        return max(1, min(self.app_history_limit, 100))
+
     def _app_box(self, user_id: str, app: str) -> dict[str, Any]:
         box = self.app_defaults(app)
         item = self.table.get_item(Key=self._app_state_key(user_id, app), ConsistentRead=True).get("Item")
@@ -1991,16 +2153,17 @@ class DynamoAccountRepository:
                 if field in stored:
                     box[field] = stored[field]
             if isinstance(stored.get("data"), dict):
-                box["data"].update(stored["data"])
+                box["data"].update({key: value for key, value in stored["data"].items() if key not in ("history", "saved")})
+        box["data"]["history"] = self._list_entries(user_id, self.HISTORY, app, limit=self._display_limit())
+        box["data"]["saved"] = self._list_entries(user_id, self.SAVED, app, limit=self._display_limit())
         box["key"] = app
         box.setdefault("preferences", box["data"].get("preferences", {}))
         return box
 
     def _write_app_box(self, user_id: str, app: str, box: dict[str, Any]) -> None:
-        data: dict[str, Any] = {
-            "history": list(box.get("data", {}).get("history", []))[-self.app_history_limit:],
-            "saved": list(box.get("data", {}).get("saved", []))[-self.app_saved_limit:],
-        }
+        # History and saved items live as their own items now; keeping them out of the box is
+        # what makes a visit cost one write instead of a whole-blob rewrite.
+        data: dict[str, Any] = {}
         if "memory" in self.APP_DEFAULTS[app]["data"]:
             data["memory"] = list(box.get("data", {}).get("memory", []))[-self.app_history_limit:]
         state = {
@@ -2032,8 +2195,8 @@ class DynamoAccountRepository:
         box["connected"] = bool(sessions) or bool(box.get("connected"))
         box["sessions"] = sessions
         box["counts"] = {
-            "history": len(box["data"].get("history", [])),
-            "saved": len(box["data"].get("saved", [])),
+            "history": self._count_entries(user_id, self.HISTORY, app),
+            "saved": self._count_entries(user_id, self.SAVED, app),
         }
         return box
 
@@ -2172,6 +2335,8 @@ class DynamoAccountRepository:
         return self.get_app_box(user_id, app)
 
     def clear_app_data(self, user_id: str, app: str) -> dict[str, Any]:
+        self._delete_all_entries(user_id, self.HISTORY, app)
+        self._delete_all_entries(user_id, self.SAVED, app)
         box = self._app_box(user_id, app)
         box["data"] = {key: [] for key in self.APP_DEFAULTS[app]["data"] if isinstance(self.APP_DEFAULTS[app]["data"][key], list)}
         box["data"]["preferences"] = {}
@@ -2230,18 +2395,10 @@ class DynamoAccountRepository:
         return box
 
     def list_app_saved(self, user_id: str, app: str, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
-        box = self._app_box(user_id, app)
-        items = list(box["data"].get("saved", []))
-        items.sort(key=lambda item: str(item.get("added_at", "")), reverse=True)
-        start = 0
-        if cursor:
-            start = next((index + 1 for index, item in enumerate(items) if item.get("id") == cursor), 0)
-        page = items[start : start + max(1, min(limit, 100))]
-        next_cursor = page[-1]["id"] if len(items) > start + len(page) else None
-        return {"items": page, "next_cursor": next_cursor, "total": len(items)}
+        return self._page_entries(user_id, self.SAVED, app, limit, cursor)
 
     def add_app_saved(self, user_id: str, app: str, title: str, url: str) -> dict[str, Any]:
-        box = self._require_active(user_id, app)
+        self._require_active(user_id, app)
         cleaned_url = self.strip_url(url)
         if not cleaned_url:
             raise ValueError("A saved item needs a URL.")
@@ -2251,46 +2408,37 @@ class DynamoAccountRepository:
             "url": cleaned_url,
             "added_at": utc_now(),
         }
-        saved = list(box["data"].get("saved", []))
-        saved = [entry for entry in saved if entry.get("url") != cleaned_url]
-        saved.append(item)
-        box["data"]["saved"] = saved[-self.app_saved_limit:]
-        box["last_used_at"] = utc_now()
-        self._write_app_box(user_id, app, box)
+        # One URL is kept once: drop the previous copy, then write the new item.
+        for existing in self._list_entries(user_id, self.SAVED, app):
+            if existing.get("url") == cleaned_url:
+                self.table.delete_item(Key=self._entry_key(user_id, self.SAVED, app, self._entry_sort(existing)))
+        self._put_entry(user_id, self.SAVED, app, item)
+        self._trim_entries(user_id, self.SAVED, app, self.app_saved_limit)
+        self._touch_app(user_id, app)
         return item
 
     def delete_app_saved(self, user_id: str, app: str, item_id: str) -> None:
-        box = self._require_active(user_id, app)
-        saved = list(box["data"].get("saved", []))
-        remaining = [entry for entry in saved if entry.get("id") != item_id]
-        if len(remaining) == len(saved):
+        self._require_active(user_id, app)
+        if not self._delete_entry(user_id, self.SAVED, app, item_id):
             raise NotFoundError("That saved item was not found.")
-        box["data"]["saved"] = remaining
-        self._write_app_box(user_id, app, box)
 
     def list_app_history(self, user_id: str, app: str, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
-        box = self._app_box(user_id, app)
-        items = list(box["data"].get("history", []))
-        items.sort(key=lambda item: str(item.get("visited_at", "")), reverse=True)
-        start = 0
-        if cursor:
-            start = next((index + 1 for index, item in enumerate(items) if item.get("id") == cursor), 0)
-        page = items[start : start + max(1, min(limit, 100))]
-        next_cursor = page[-1]["id"] if len(items) > start + len(page) else None
-        return {"items": page, "next_cursor": next_cursor, "total": len(items)}
+        return self._page_entries(user_id, self.HISTORY, app, limit, cursor)
 
     def add_app_history(self, user_id: str, app: str, entries: list[dict[str, Any]]) -> dict[str, Any]:
         box = self._require_active(user_id, app)
         if box.get("preferences", {}).get("history_sync") is False and app == "EYEBROWSE":
             raise AppPausedError("History sync is turned off for this app.")
-        history = list(box["data"].get("history", []))
         added = 0
         for entry in entries[:100]:
             url = self.strip_url(str(entry.get("url") or entry.get("origin") or ""))
             if not url:
                 continue
             parts = urlsplit(url)
-            history.append(
+            self._put_entry(
+                user_id,
+                self.HISTORY,
+                app,
                 {
                     "id": f"hs_{uuid4().hex[:12]}",
                     "title": self.clean_text(entry.get("title", ""), 300) or url,
@@ -2298,18 +2446,16 @@ class DynamoAccountRepository:
                     "path": (parts.path or "/")[:500],
                     "visited_at": self.clean_text(entry.get("visited_at", ""), 40) or utc_now(),
                     "visits": max(1, min(int(entry.get("visits", 1) or 1), 1000)),
-                }
+                },
             )
             added += 1
-        box["data"]["history"] = history[-self.app_history_limit:]
-        box["last_used_at"] = utc_now()
-        self._write_app_box(user_id, app, box)
-        return {"added": added, "total": len(box["data"]["history"])}
+        if added:
+            self._trim_entries(user_id, self.HISTORY, app, self.app_history_limit)
+            self._touch_app(user_id, app)
+        return {"added": added, "total": self._count_entries(user_id, self.HISTORY, app)}
 
     def clear_app_history(self, user_id: str, app: str) -> dict[str, Any]:
-        box = self._app_box(user_id, app)
-        box["data"]["history"] = []
-        self._write_app_box(user_id, app, box)
+        self._delete_all_entries(user_id, self.HISTORY, app)
         return {"history": 0}
 
     def create_app_code(self, user_id: str, app: str, code_hash: str, code_challenge: str) -> None:
