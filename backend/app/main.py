@@ -990,14 +990,9 @@ def delete_security_events(
     payload: SecurityEventDelete | None = None,
 ) -> dict[str, int]:
     ids = payload.ids if payload else None
-    removed = repository.delete_security_events(user_id, ids)
-    repository.record_security_event(
-        user_id,
-        "security",
-        "Security activity cleared",
-        f"{removed} entr{'ies were' if removed != 1 else 'y was'} removed from the security activity list.",
-    )
-    return {"removed": removed}
+    # Removed means removed: nothing is written back, so the entry is gone from the
+    # table and from every list that reads it, including the data export.
+    return {"removed": repository.delete_security_events(user_id, ids)}
 
 
 @app.delete(

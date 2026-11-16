@@ -417,6 +417,13 @@ def main() -> int:
     left = [item for key, item in table.items.items() if key[0] == f"USER#{user_id}" and key[1].startswith("EVENT#")]
     check("deleted id is gone", all(item["id"] != victim for item in left))
     check("other events survive", any(item["id"] == survivor for item in left))
+    check("nothing is written back", len(left) == len(events) - 1, f"{len(left)} vs {len(events) - 1}")
+    state_after = client.get("/api/v1/me", headers=user_headers).json()
+    check("gone from the account state", all(event["id"] != victim for event in state_after["security_events"]))
+    cleared = client.request("DELETE", "/api/v1/me/security-events", headers=user_headers, json={})
+    check("clear all works", cleared.status_code == 200, cleared.text)
+    remaining = [key for key in table.items if key[0] == f"USER#{user_id}" and key[1].startswith("EVENT#")]
+    check("table holds no events", not remaining, str(len(remaining)))
 
     print("cascade")
     repo.delete_account(user_id)
