@@ -1,5 +1,5 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-approws1';
-import {Api} from '../../shared/api-client.js?v=20261116-approws1';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-audit1';
+import {Api} from '../../shared/api-client.js?v=20261116-audit1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
@@ -13,6 +13,14 @@ listStyle.textContent=`
   .data-list li small{display:block;margin-top:2px;color:#607087;font-size:12px;overflow-wrap:anywhere}
   .data-list li button{white-space:nowrap;justify-self:end}
   .data-list li a{overflow-wrap:anywhere}
+  .panel h2{font-size:17px;margin:0 0 8px}
+  .page-back{display:inline-block;margin:0 0 12px;font-size:13px}
+  .switch-row{display:flex;flex-wrap:nowrap;align-items:flex-start;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid #eef1f6}
+  .switch-row:last-child{border-bottom:0;padding-bottom:0}
+  .switch-row>div{min-width:0;flex:1 1 auto}
+  .switch-row .switch{flex:0 0 auto;margin-top:3px}
+  .switch-row .form-note{margin:4px 0 0}
+  .switch-row>button,.switch-row>span.form-note{flex:0 0 auto;align-self:center;margin:0;text-align:right}
   @media(max-width:520px){
     .data-list li{grid-template-columns:1fr;gap:8px;padding:12px}
     .data-list li button{justify-self:start;width:auto}
@@ -59,7 +67,7 @@ export function appPage(key,label){
     const preferences=Object.entries(box.preferences||{}).map(([name,value])=>`${name.replaceAll('_',' ')}: ${value}`).join(' · ');
 
     setup('apps-data',`
-      <a class="secondary" href="../index.html">← All apps</a>
+      <a class="secondary page-back" href="../index.html">← All apps</a>
       <h1>${esc(label)} <span class="badge">${esc(status)}</span></h1>
       <p class="lead">Access and the data this app keeps in your Indo Account.</p>
 
@@ -137,9 +145,9 @@ export function appPage(key,label){
     // Adopt the handed identity before any setup() call: setup() sends the browser
     // to the sign-in page when it finds no local user, and a fresh WebView has none.
     await adoptHandedIdentity();
-    setup('apps-data',`<h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
+    setup('apps-data',`<a class="secondary page-back" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="lead">Loading app data…</p>`,'../../');
     try{box=await Api.getApp(key);paint()}
-    catch(error){setup('apps-data',`<a class="secondary" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="form-note">${esc(error.message)}</p>`,'../../')}
+    catch(error){setup('apps-data',`<a class="secondary page-back" href="../index.html">← All apps</a><h1>${esc(label)}</h1><p class="form-note">${esc(error.message)}</p>`,'../../')}
   }
 
   load();
