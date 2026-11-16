@@ -1,5 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-applogos1';
-import {Api} from '../../shared/api-client.js?v=20261116-applogos1';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261116-footer1';
+import {Api} from '../../shared/api-client.js?v=20261116-footer1';
 
 const u=user();
 const icon={
