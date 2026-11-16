@@ -1,8 +1,21 @@
-import {setup,esc,$,toast,modal,download} from '../shared/layout.js?v=20261116-appdata1';
-import {Api} from '../../shared/api-client.js?v=20261116-appdata1';
+import {setup,esc,$,toast,modal,download} from '../shared/layout.js?v=20261116-paneltoken1';
+import {Api} from '../../shared/api-client.js?v=20261116-paneltoken1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
+
+// The app hands its own token in the URL fragment when it opens this panel, so the
+// page is already signed in for that one app. The fragment never leaves the browser.
+const fragmentToken=()=>{
+  const match=/[#&]app_token=([^&]+)/.exec(location.hash||'');
+  return match?decodeURIComponent(match[1]):'';
+};
+const handed=fragmentToken();
+if(handed){
+  Api.setSession(handed);
+  history.replaceState({},'',location.pathname+location.search);
+  addEventListener('pagehide',()=>Api.clearSession());
+}
 
 export function appPage(key,label){
   let box=null;

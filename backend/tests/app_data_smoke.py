@@ -305,6 +305,23 @@ def main() -> int:
     check("panel sees the session", len(box["sessions"]) == 1, str(box["sessions"]))
     check("panel sees counts", box["counts"]["saved"] == 1 and box["counts"]["history"] == 5, str(box["counts"]))
 
+    print("panel opened from an app token")
+    own = client.get("/api/v1/me/apps/EYEBROWSE", headers=app_headers)
+    check("app token opens its own panel", own.status_code == 200, own.text)
+    other = client.get("/api/v1/me/apps/EYESEARCH", headers=app_headers)
+    check("app token cannot open another panel", other.status_code == 403, other.text)
+    listing = client.get("/api/v1/me/apps", headers=app_headers)
+    check("app token cannot list all boxes", listing.status_code in {401, 403}, listing.text)
+    account = client.get("/api/v1/me", headers=app_headers)
+    check("app token still refused on the account route", account.status_code in {401, 403}, account.text)
+    cleared_via_app = client.delete("/api/v1/me/apps/EYEBROWSE/history", headers=app_headers)
+    check("app token can clear its own history", cleared_via_app.status_code == 200, cleared_via_app.text)
+    paused_by_app = client.patch("/api/v1/me/apps/EYEBROWSE", headers=app_headers, json={"status": "Active"})
+    check("app token can resume its own app", paused_by_app.status_code == 200, paused_by_app.text)
+    still_other = client.patch("/api/v1/me/apps/EYESEARCH", headers=app_headers, json={"status": "Paused"})
+    check("app token cannot pause another app", still_other.status_code == 403, still_other.text)
+
+
     cleared_history = client.delete("/api/v1/me/apps/EYEBROWSE/history", headers=user_headers)
     check("panel clears history", cleared_history.status_code == 200, cleared_history.text)
     check("history gone, saved kept", cleared_history.json()["history"] == 0, cleared_history.text)

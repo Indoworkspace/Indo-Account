@@ -346,6 +346,30 @@ def current_user(token: Annotated[str, Depends(bearer_token)]) -> str:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
 
 
+def panel_identity(token: Annotated[str, Depends(bearer_token)]) -> tuple[str, str | None]:
+    """An account session, or an app token that may only open its own app's panel."""
+    if token.count(".") == 2:
+        try:
+            user_id, app, _session_id = repository.user_from_app_token(token)
+        except AuthenticationError as error:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+        return user_id, app
+    try:
+        return repository.user_from_token(token), None
+    except AuthenticationError as error:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
+
+
+def scoped_user(app: str, identity: tuple[str, str | None]) -> str:
+    user_id, token_app = identity
+    if token_app is not None and token_app != app:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "This app session can only open its own panel.",
+        )
+    return user_id
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_handler(_request: Request, error: RequestValidationError):
     errors = error.errors()
@@ -1018,17 +1042,17 @@ def list_apps(user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
 
 
 @app.get("/api/v1/me/apps/{app}")
-def get_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.get_app_box(user_id, app)
+def get_app_box(app: AppKey, identity: Annotated[tuple[str, str | None], Depends(panel_identity)]) -> dict[str, Any]:
+    return repository.get_app_box(scoped_user(app, identity), app)
 
 
 @app.patch("/api/v1/me/apps/{app}")
 def update_app_status(
     app: AppKey,
     payload: AppStatusUpdate,
-    user_id: Annotated[str, Depends(current_user)],
+    identity: Annotated[tuple[str, str | None], Depends(panel_identity)],
 ) -> dict[str, Any]:
-    return repository.set_app_status(user_id, app, payload.status)
+    return repository.set_app_status(scoped_user(app, identity), app, payload.status)
 
 
 @app.post("/api/v1/me/apps/{app}/authorize", status_code=201)
@@ -1055,8 +1079,8 @@ def authorize_app(
     status_code=status.HTTP_204_NO_CONTENT,
     response_class=Response,
 )
-def revoke_app_access(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> Response:
-    repository.revoke_app_sessions(user_id, app)
+def revoke_app_access(app: AppKey, identity: Annotated[tuple[str, str | None], Depends(panel_identity)]) -> Response:
+    repository.revoke_app_sessions(scoped_user(app, identity), app)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -1068,25 +1092,25 @@ def revoke_app_access(app: AppKey, user_id: Annotated[str, Depends(current_user)
 def revoke_one_app_session(
     app: AppKey,
     session_id: str,
-    user_id: Annotated[str, Depends(current_user)],
+    identity: Annotated[tuple[str, str | None], Depends(panel_identity)],
 ) -> Response:
-    repository.revoke_app_sessions(user_id, app, session_id)
+    repository.revoke_app_sessions(scoped_user(app, identity), app, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.delete("/api/v1/me/apps/{app}/history")
-def clear_app_history_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.clear_app_history(user_id, app)
+def clear_app_history_box(app: AppKey, identity: Annotated[tuple[str, str | None], Depends(panel_identity)]) -> dict[str, Any]:
+    return repository.clear_app_history(scoped_user(app, identity), app)
 
 
 @app.delete("/api/v1/me/apps/{app}/data")
-def clear_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.clear_app_data(user_id, app)
+def clear_app_box(app: AppKey, identity: Annotated[tuple[str, str | None], Depends(panel_identity)]) -> dict[str, Any]:
+    return repository.clear_app_data(scoped_user(app, identity), app)
 
 
 @app.get("/api/v1/me/apps/{app}/export")
-def export_app_box(app: AppKey, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
-    return repository.export_app_box(user_id, app)
+def export_app_box(app: AppKey, identity: Annotated[tuple[str, str | None], Depends(panel_identity)]) -> dict[str, Any]:
+    return repository.export_app_box(scoped_user(app, identity), app)
 
 
 # ---------------------------------------------------------------------------
