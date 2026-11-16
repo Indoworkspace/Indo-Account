@@ -31,6 +31,7 @@ function remember(result){sessionStorage.setItem(TOKEN_KEY,result.token);return 
 export const Api={
   baseUrl:API_BASE_URL,
   hasSession:()=>!!token(),
+  setSession:value=>sessionStorage.setItem(TOKEN_KEY,value),
   clearSession:()=>sessionStorage.removeItem(TOKEN_KEY),
   checkIndoId:handle=>request('/api/v1/auth/indo-id/availability',{method:'POST',authenticated:false,body:{handle}}),
   requestSignupOtp:email=>request('/api/v1/auth/email-otp/request',{method:'POST',authenticated:false,body:{email}}),
