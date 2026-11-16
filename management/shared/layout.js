@@ -1,6 +1,6 @@
-import {Store} from '../../shared/session-store.js?v=20261116-eyemail1';
-import {icon,iconStyle} from '../../shared/icons.js?v=20261116-eyemail1';
-import {Api} from '../../shared/api-client.js?v=20261116-eyemail1';
+import {Store} from '../../shared/session-store.js?v=20261116-font1';
+import {icon,iconStyle} from '../../shared/icons.js?v=20261116-font1';
+import {Api} from '../../shared/api-client.js?v=20261116-font1';
 
 // The app trades its own token for a short-lived account session and opens this panel
 // with it in the fragment. Adopt it before any page decides to redirect, so every
@@ -21,11 +21,11 @@ if(sessionStorage.getItem('indo_app_panel')==='1'&&!Store.current()){
 const groups=[
   {title:'Account',items:[['home','Home'],['personal-info','Personal info'],['security','Security & sign-in'],['devices','Devices'],['privacy','Data & privacy'],['notifications','Notifications']]},
   {title:'Connections',items:[['indo-connect','Indo Connect']]},
-  {title:'App center',items:[['sankalp','Sankalp'],['eyesearch','Eyesearch'],['eyebrowse','Eyebrowse'],['eyemail','Eyemail']]},
+  {title:'App center',items:[['sankalp','Sankalp'],['eyesearch','Eyesearch'],['eyebrowse','Eyebrowse']]},
   {title:'More',items:[['help-support','Help & support'],['account-actions','About & account']]}
 ];
-const paths={home:'home','personal-info':'personal-info',security:'security',devices:'devices',privacy:'privacy',notifications:'notifications','indo-connect':'indo-connect',sankalp:'apps-data/sankalp',eyesearch:'apps-data/eyesearch',eyebrowse:'apps-data/eyebrowse',eyemail:'apps-data/eyemail','help-support':'help-support','account-actions':'account-actions'};
-const navIcon={home:'home','personal-info':'id',security:'shield',devices:'devices',privacy:'database',notifications:'bell','indo-connect':'plug',sankalp:'chat',eyesearch:'search',eyebrowse:'browser',eyemail:'envelope','help-support':'lifebuoy','account-actions':'info'};
+const paths={home:'home','personal-info':'personal-info',security:'security',devices:'devices',privacy:'privacy',notifications:'notifications','indo-connect':'indo-connect',sankalp:'apps-data/sankalp',eyesearch:'apps-data/eyesearch',eyebrowse:'apps-data/eyebrowse','help-support':'help-support','account-actions':'account-actions'};
+const navIcon={home:'home','personal-info':'id',security:'shield',devices:'devices',privacy:'database',notifications:'bell','indo-connect':'plug',sankalp:'chat',eyesearch:'search',eyebrowse:'browser','help-support':'lifebuoy','account-actions':'info'};
 const $=s=>document.querySelector(s),esc=(v='')=>{const e=document.createElement('div');e.textContent=v;return e.innerHTML},initials=s=>s.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase();
 const avatarContent=u=>u.profile_photo?`<img src="${esc(u.profile_photo)}" alt="${esc(u.full_name)} profile photo">`:initials(u.full_name);
 

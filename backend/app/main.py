@@ -3,13 +3,10 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import logging
 import os
 import re
 import time
-import urllib.error
-import urllib.request
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 from uuid import uuid4
@@ -22,7 +19,7 @@ from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .config import settings
-from .emailer import EmailConfigurationError, EmailDeliveryError, EyemailSender, SesEmailSender
+from .emailer import EmailConfigurationError, EmailDeliveryError, SesEmailSender
 from .repository import (
     AppPausedError,
     AuthenticationError,
@@ -56,6 +53,11 @@ def build_repository() -> DynamoAccountRepository:
     )
 
 
+repository = build_repository()
+email_sender = SesEmailSender(
+    boto3.client("sesv2", region_name=settings.aws_region),
+    from_email=settings.otp_from_email,
+)
 # Lambda does not configure logging, so the root logger stays at WARNING and every
 # `logger.info` was silently dropped — only exceptions ever reached CloudWatch, which made a
 # quiet log look like proof that nothing happened. Give the root logger a handler and a level
@@ -65,24 +67,6 @@ if not logging.getLogger().handlers:
 else:
     logging.getLogger().setLevel(os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
-
-repository = build_repository()
-# Eyemail can deliver our mail. When its backend URL is configured we use it; otherwise we
-# keep SES, so nothing changes on a deploy that has not been pointed at Eyemail yet.
-if settings.eyemail_backend_url:
-    email_sender: Any = EyemailSender(
-        settings.eyemail_backend_url,
-        secret=settings.eyemail_internal_secret,
-        sender_name="Indoworkspace Security",
-        timeout=settings.eyemail_timeout_seconds,
-    )
-    logger.info("mail transport=eyemail")
-else:
-    email_sender = SesEmailSender(
-        boto3.client("sesv2", region_name=settings.aws_region),
-        from_email=settings.otp_from_email,
-    )
-    logger.info("mail transport=ses")
 app = FastAPI(title="Indo Account API", version="1.0.0", docs_url=None, redoc_url=None)
 
 
@@ -275,7 +259,7 @@ class SupportRequest(BaseModel):
     message: str = Field(min_length=20, max_length=2000)
 
 
-AppKey = Literal["SANKALPA", "EYESEARCH", "EYEBROWSE", "EYEMAIL"]
+AppKey = Literal["SANKALPA", "EYESEARCH", "EYEBROWSE"]
 
 
 class AppAuthorizeRequest(BaseModel):
@@ -330,16 +314,6 @@ APP_CLIENTS = {
     "SANKALPA": {"name": "Sankalp", "redirect_prefixes": ("sankalp://", "https://sankalp.indoworkspace.in/")},
     "EYESEARCH": {"name": "Eyesearch Search Engine", "redirect_prefixes": ("eyesearch://", "https://eyesearch.indoworkspace.in/")},
     "EYEBROWSE": {"name": "Eyebrowse Browser", "redirect_prefixes": ("indobrowse://",)},
-    "EYEMAIL": {
-        "name": "Eyemail",
-        "redirect_prefixes": (
-            "https://eyemail.in/",
-            "https://www.eyemail.in/",
-            "https://indoworkspace.github.io/eyemail-frontend/",
-            "http://localhost:",
-            "http://127.0.0.1:",
-        ),
-    },
 }
 
 
@@ -349,39 +323,6 @@ SECURITY_ACTION_LABELS = {
     "delete_account": "permanently deleting your Indo Account",
     "export_data": "downloading a copy of your Indo Account data",
 }
-
-
-def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
-    """Tell the Eyemail backend that a new @eyemail.in address exists.
-
-    Runs inside the signup request, after the account transaction has committed. It never
-    blocks or fails the signup: a slow or broken Eyemail backend must not cost a user their
-    new account, so every error is logged and swallowed.
-    """
-    base = settings.eyemail_backend_url
-    if not base:
-        return
-    body = json.dumps(
-        {
-            "uid": profile.get("user_id"),
-            "email": profile.get("eyemail_id"),
-            "name": profile.get("full_name"),
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        f"{base}/api/internal/register-mailbox",
-        data=body,
-        headers={"Content-Type": "application/json", "X-API-Key": settings.eyemail_internal_secret},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=settings.eyemail_timeout_seconds) as response:
-            if response.status >= 300:
-                logger.warning("eyemail mailbox registration returned status=%s", response.status)
-            else:
-                logger.info("eyemail mailbox registered for user=%s", profile.get("user_id"))
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
-        logger.exception("eyemail mailbox registration failed for user=%s", profile.get("user_id"))
 
 
 def send_account_alert(
@@ -671,7 +612,6 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
         payload.model_dump(),
         require_email_verification=settings.require_signup_email_otp,
     )
-    register_eyemail_mailbox(profile)
     return {"token": token, "profile": profile}
 
 

@@ -1,6 +1,5 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-eyemail1';
-import {Api} from '../../shared/api-client.js?v=20261116-eyemail1';
-import {icon} from '../../shared/icons.js?v=20261116-eyemail1';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261116-font1';
+import {Api} from '../../shared/api-client.js?v=20261116-font1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
@@ -16,7 +15,7 @@ listStyle.textContent=`
   .data-list li a{overflow-wrap:anywhere}
   .panel h2{font-size:17px;margin:0 0 8px}
   .page-back{display:inline-block;margin:0 0 12px;font-size:13px}
-  .app-title{display:flex;align-items:center;gap:10px}.app-title-mark{width:34px;height:34px;object-fit:contain;flex:none}.app-title-icon{width:34px;height:34px;display:grid;place-items:center;color:var(--brand-strong);flex:none}
+  .app-title{display:flex;align-items:center;gap:10px}.app-title-mark{width:34px;height:34px;object-fit:contain;flex:none}
   .switch-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid #e2e9f2}
   .switch-row:last-child{border-bottom:0;padding-bottom:0}
   .switch-row>div{min-width:0}
@@ -58,13 +57,6 @@ async function adoptHandedIdentity(){
   try{Store.adoptIdentity(await Api.appIdentity())}catch(error){/* the page shows the API error itself */}
 }
 
-function markFor(label){
-  const name=label.split(' ')[0].toLowerCase();
-  // Eyemail has no artwork yet, so it shows the mail icon instead of a broken image.
-  if(name==='eyemail')return '<span class="app-title-icon">'+icon('envelope',28)+'</span>';
-  return `<img class="app-title-mark" src="../../../assets/branding/${name}-mark-256.png" alt="">`;
-}
-
 export function appPage(key,label){
   let box=null;
 
@@ -77,7 +69,7 @@ export function appPage(key,label){
 
     setup('apps-data',`
       <a class="secondary page-back" href="../index.html">← All apps</a>
-      <h1 class="app-title">${markFor(label)}<span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
+      <h1 class="app-title"><img class="app-title-mark" src="../../../assets/branding/${label.split(' ')[0].toLowerCase()}-mark-256.png" alt=""><span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
       <p class="lead">Access and the data this app keeps in your Indo Account.</p>
 
       <article class="panel">
