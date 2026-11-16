@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-sankalplogo1';
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-sankalplogo1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261116-buttons1';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261116-buttons1';
 
 const u=user();
 const rowIcon={id:'id',name:'user',nickname:'tag',gender:'gender',email:'envelope',phone:'phone',birthday:'cake',language:'translate',home:'house',work:'briefcase',other:'pin'};
