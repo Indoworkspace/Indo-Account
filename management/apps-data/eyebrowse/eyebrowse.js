@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-logo2';
+import {appPage} from '../app-page.js?v=20261116-icons1';
 
 appPage('EYEBROWSE','Eyebrowse');
