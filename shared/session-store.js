@@ -67,7 +67,7 @@ Store.createSupportRequest=(category,message)=>Api.createSupportRequest(category
 
 Store.adoptIdentity=identity=>{
   const data=read(),userId=identity.user_id;
-  const minimal={user_id:userId,eyemail_id:identity.indo_id,full_name:identity.full_name,nickname:identity.nickname,language:identity.language,remote_managed:true,app_scoped:true,sessions:[],security_events:[],oauth_connections:[],invoices:[],notifications:{},apps:{}};
+  const minimal={user_id:userId,eyemail_id:identity.indo_id||identity.eyemail_id,full_name:identity.full_name,nickname:identity.nickname,language:identity.language,remote_managed:true,app_scoped:true,sessions:[],security_events:[],oauth_connections:[],invoices:[],notifications:{},apps:{}};
   const index=data.users.findIndex(item=>item.user_id===userId);
   if(index===-1)data.users.push(minimal);else data.users[index]={...data.users[index],...minimal};
   write(data);localStorage.setItem(ACTIVE_USER_KEY,userId);return minimal;

@@ -376,6 +376,29 @@ def main() -> int:
         check("other browser session revoked", client.get("/api/v1/me", headers=second_headers).status_code == 401)
         check("app session revoked", client.get("/api/v1/app/me", headers={"Authorization": f"Bearer {fresh_app}"}).status_code == 401)
 
+    print("panel session from an app token")
+    fresh_code = client.post(
+        "/api/v1/me/apps/EYEBROWSE/authorize",
+        headers=user_headers,
+        json={"redirect": "indobrowse://auth", "code_challenge": pkce(verifier), "state": "s3"},
+    ).json()["redirect_url"].split("code=")[1].split("&")[0]
+    live_app = client.post(
+        "/api/v1/app/session",
+        json={"app": "EYEBROWSE", "code": fresh_code, "code_verifier": verifier, "device": "Pixel"},
+    ).json()["token"]
+    panel = client.post(
+        "/api/v1/app/panel-session",
+        headers={"Authorization": f"Bearer {live_app}"},
+        json={"device": "Pixel 7"},
+    )
+    check("panel session issued", panel.status_code == 201, panel.text)
+    panel_token = panel.json()["panel_token"] if panel.status_code == 201 else ""
+    check("panel session is short lived", panel.json().get("expires_in") == 900, str(panel.json())[:120])
+    panel_headers = {"Authorization": f"Bearer {panel_token}"}
+    check("panel token reaches the account door", client.get("/api/v1/me", headers=panel_headers).status_code == 200)
+    check("panel token lists the app boxes", client.get("/api/v1/me/apps", headers=panel_headers).status_code == 200)
+    check("panel token is not an app token", client.get("/api/v1/app/me", headers=panel_headers).status_code in {401, 403})
+
     print("cascade")
     repo.delete_account(user_id)
     left = [key for key in table.items if key[0] == f"USER#{user_id}"]
