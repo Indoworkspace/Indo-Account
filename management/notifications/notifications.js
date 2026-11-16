@@ -1,6 +1,7 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-activitysel1';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261116-notifsoff1';
 
 const optional=[
+  ['security','Security alerts','Password, recovery and account protection notices.'],
   ['signin','Sign-in alerts','Get notified when a browser or device signs in.'],
   ['account','Account changes','Updates when recovery details or account settings change.'],
   ['updates','Indo service updates','Important feature and service announcements.'],
@@ -12,7 +13,7 @@ function render(){
   const row=([key,label,detail])=>`<div class="notification-row"><div><b>${label}</b><p>${detail}</p></div><input class="switch notice" data-key="${key}" type="checkbox" ${u.notifications[key]?'checked':''} aria-label="${label}"></div>`;
 
   setup('notifications',`<h1>Notifications</h1><p class="lead">Control account alerts and optional updates in one place.</p>
-  <section class="notification-section"><div class="section-heading"><div><h2>Essential security alerts</h2><p>Critical messages that protect your Indo Account.</p></div><span class="badge">Always on</span></div><article class="notification-card"><div class="notification-row locked-row"><div><b>Critical security alerts</b><p>Password, recovery, suspicious sign-in, and account protection notices.</p></div><input class="switch" type="checkbox" checked disabled aria-label="Critical security alerts always on"></div></article></section>
+  <section class="notification-section"><div class="section-heading"><div><h2>Security alerts</h2><p>Off until you turn them on. Verification codes are always sent.</p></div></div><article class="notification-card"><div class="notification-row"><div><b>Security alerts</b><p>Password changes, recovery updates and account protection notices.</p></div><input class="switch notice" data-key="security" type="checkbox" ${u.notifications.security?'checked':''} aria-label="Security alerts"></div></article></section>
   <section class="notification-section"><div class="section-heading"><div><h2>Your notification choices</h2><p>Changes are saved immediately across your Indo Account.</p></div><div class="bulk-actions"><button class="secondary" id="enable-optional" type="button">Turn on all</button><button class="secondary" id="disable-optional" type="button">Turn off optional</button></div></div><article class="notification-card">${optional.map(row).join('')}</article></section>
   <section class="notification-section"><div class="section-heading"><div><h2>Delivery destination</h2><p>Account notifications currently use your verified recovery email.</p></div></div><article class="delivery-card"><span class="delivery-icon">@</span><div><b>${u.secondary_email||'No recovery email added'}</b><p>${u.secondary_email_verified?'Verified and ready for delivery.':'Verify your recovery email in Personal info.'}</p></div><a class="secondary" href="../personal-info/index.html">Manage</a></article></section>`);
 

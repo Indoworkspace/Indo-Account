@@ -1462,7 +1462,7 @@ class DynamoAccountRepository:
         items = response.get("Items", [])
         apps = {key: {**copy.deepcopy(value), "key": key} for key, value in self.APP_DEFAULTS.items()}
         app_sessions: dict[str, list[dict[str, Any]]] = {}
-        notifications = {"security": True, "signin": True, "account": True, "updates": True, "billing": True, "news": False}
+        notifications = {"security": False, "signin": False, "account": False, "updates": False, "billing": False, "news": False}
         billing = {"company": "", "gstin": "", "address": "", "state": ""}
         sessions: list[dict[str, Any]] = []
         connections: list[dict[str, Any]] = []

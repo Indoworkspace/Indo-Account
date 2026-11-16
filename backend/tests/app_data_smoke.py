@@ -399,6 +399,18 @@ def main() -> int:
     check("panel token lists the app boxes", client.get("/api/v1/me/apps", headers=panel_headers).status_code == 200)
     check("panel token is not an app token", client.get("/api/v1/app/me", headers=panel_headers).status_code in {401, 403})
 
+    print("notifications default to off")
+    defaults = client.get("/api/v1/me", headers=user_headers).json()["notifications"]
+    check("every notification is off by default", not any(defaults.values()), str(defaults))
+    switched = client.patch(
+        "/api/v1/me/state",
+        headers=user_headers,
+        json={"notifications": {"security": True, "signin": True, "account": False, "updates": False, "news": False}},
+    )
+    check("switching on is saved", switched.status_code == 200, switched.text)
+    saved = switched.json()["notifications"]
+    check("only what was switched on stays on", saved.get("security") is True and saved.get("signin") is True and saved.get("updates") is False, str(saved))
+
     print("security activity deletion")
     for index in range(4):
         repo.record_security_event(user_id, "test", f"Event {index}", "Created by the smoke test.")

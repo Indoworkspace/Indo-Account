@@ -326,9 +326,14 @@ def send_account_alert(
 ) -> None:
     notifications = state.get("notifications") or {}
     destination = str(state.get("secondary_email") or "").strip().lower()
-    if not destination or not state.get("secondary_email_verified") or not notifications.get("security", True):
+    if not destination or not state.get("secondary_email_verified"):
         return
-    if preference and not notifications.get(preference, True):
+    # Nothing is sent unless the user turned that notification on. Verification codes
+    # (OTP) are a separate path and are unaffected by these preferences.
+    wanted = preference or "account"
+    if not notifications.get("security", False):
+        return
+    if not notifications.get(wanted, False):
         return
     try:
         email_sender.send_account_alert(
