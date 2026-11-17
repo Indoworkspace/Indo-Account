@@ -29,7 +29,7 @@ class EyemailSender:
     EmailDeliveryError so callers keep their existing behaviour.
     """
 
-    def __init__(self, base_url: str, *, secret: str, sender_name: str = "Indoworkspace Security", timeout: float = 6.0):
+    def __init__(self, base_url: str, *, secret: str, sender_name: str = "Indo Security Team", timeout: float = 6.0):
         self.base_url = base_url.rstrip("/")
         self.secret = secret
         self.sender_name = sender_name
