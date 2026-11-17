@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261117-eyemail1';
+import {appPage} from '../app-page.js?v=20261117-email1';
 
 appPage('EYESEARCH','Eyesearch');

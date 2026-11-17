@@ -1,6 +1,6 @@
-import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261117-eyemail1';
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-eyemail1';
-import {Api} from '../../shared/api-client.js?v=20261117-eyemail1';
+import {setup,user,Store,esc,$,toast,modal} from '../shared/layout.js?v=20261117-email1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-email1';
+import {Api} from '../../shared/api-client.js?v=20261117-email1';
 
 const signInPage='../../Sign%20in/index.html';
 const appNames={SANKALPA:'Sankalp',EYESEARCH:'Eyesearch',EYEBROWSE:'Eyebrowse'};
