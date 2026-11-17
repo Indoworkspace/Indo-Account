@@ -1,6 +1,6 @@
-import {setup,esc,$,toast} from '../shared/layout.js?v=20261117-mail1';
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail1';
-import {Api} from '../../shared/api-client.js?v=20261117-mail1';
+import {setup,esc,$,toast} from '../shared/layout.js?v=20261117-mail2';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail2';
+import {Api} from '../../shared/api-client.js?v=20261117-mail2';
 
 const apps=[
   ['SANKALPA','Sankalp','AI Assistant','sankalp/index.html','','Chat history, saved items and AI memory.'],

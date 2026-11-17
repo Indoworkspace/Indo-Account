@@ -1,4 +1,4 @@
-import {Api} from './api-client.js?v=20261117-mail1';
+import {Api} from './api-client.js?v=20261117-mail2';
 
 export const PasswordReset={
   request:identifier=>Api.requestPasswordReset(identifier),

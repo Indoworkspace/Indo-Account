@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261117-mail1';import {Api} from '../shared/api-client.js?v=20261117-mail1';Store.init();
+import {Store} from '../shared/session-store.js?v=20261117-mail2';import {Api} from '../shared/api-client.js?v=20261117-mail2';Store.init();
 const $=s=>document.querySelector(s),form=$('#signin-form'),submit=$('#signin-button');$('#toggle-password').onclick=()=>{const p=$('#password'),button=$('#toggle-password'),hidden=p.type==='password';p.type=hidden?'text':'password';button.setAttribute('aria-label',hidden?'Hide password':'Show password');button.title=hidden?'Hide password':'Show password'};
 if(new URLSearchParams(location.search).get('reset')==='success'){const message=$('#message');message.className='success';message.textContent='Password updated. Sign in with your new password.';history.replaceState({},'',location.pathname)}
 
@@ -18,7 +18,13 @@ function returnToApp(url,key){
     submit.disabled=false;
     const go=event=>{if(event)event.preventDefault();location.href=url};
     submit.onclick=go;
-    form.onsubmit=go;
+    // A mail link can send someone here to sign in and come straight back to their inbox.
+// Only a fixed set of destinations is allowed, so this can never be used as an open redirect.
+const nextPage=()=>{
+  const wanted=new URLSearchParams(location.search).get('next');
+  return wanted==='mail'?'../management/apps-data/eyemail/index.html?open=mail':'../management/index.html';
+};
+form.onsubmit=go;
     if(!document.querySelector('#return-to-app')){
       const link=document.createElement('a');
       link.id='return-to-app';
@@ -35,4 +41,4 @@ form.addEventListener('input',()=>{const message=$('#message');if(message.classL
 const handoff=()=>{const params=new URLSearchParams(location.search),app=(params.get('app')||'').toUpperCase(),redirect=params.get('redirect')||'',challenge=params.get('code_challenge')||'';if(!['SANKALPA','EYESEARCH','EYEBROWSE'].includes(app)||!redirect||!challenge)return null;return{app,redirect,code_challenge:challenge,state:params.get('state')||''}};
 const pending=handoff();
 if(pending){const note=$('#message');note.className='success';note.textContent=`Sign in to continue to ${pending.app==='EYEBROWSE'?'Eyebrowse':pending.app==='EYESEARCH'?'Eyesearch':'Sankalp'}.`}
-form.onsubmit=async event=>{event.preventDefault();const message=$('#message');submit.disabled=true;submit.textContent='Signing in…';form.setAttribute('aria-busy','true');try{await Store.login($('#identifier').value,$('#password').value);if(pending){submit.textContent='Returning to the app…';const result=await Api.authorizeApp(pending.app,pending);returnToApp(result.redirect_url,pending.app);return}submit.textContent='Opening account…';location.replace('../management/index.html')}catch(error){message.className='error';message.textContent=error.message;submit.disabled=false;submit.textContent='Sign in';form.removeAttribute('aria-busy')}};
+form.onsubmit=async event=>{event.preventDefault();const message=$('#message');submit.disabled=true;submit.textContent='Signing in…';form.setAttribute('aria-busy','true');try{await Store.login($('#identifier').value,$('#password').value);if(pending){submit.textContent='Returning to the app…';const result=await Api.authorizeApp(pending.app,pending);returnToApp(result.redirect_url,pending.app);return}submit.textContent='Opening account…';location.replace(nextPage())}catch(error){message.className='error';message.textContent=error.message;submit.disabled=false;submit.textContent='Sign in';form.removeAttribute('aria-busy')}};
