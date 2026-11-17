@@ -874,6 +874,35 @@ def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
 
+@app.get("/api/v1/me/mail-session")
+def mail_session(user_id: Annotated[str, Depends(current_user)]) -> dict[str, str]:
+    """Give the panel a one-time link that opens this person's mailbox.
+
+    The link carries a short-lived Firebase token in its fragment, minted only when the person
+    clicks, and it is never logged here.
+    """
+    try:
+        result = email_sender.mail_session(user_id)
+    except EmailConfigurationError as error:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Mail is not configured yet.") from error
+    except EmailDeliveryError as error:
+        # Eyemail answers 404 for a missing mailbox and 409 for a mailbox with no login record.
+        if getattr(error, "status", None) in (404, 409):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Your mailbox is still being set up. Try again in a minute.",
+            ) from error
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Your mailbox could not be opened right now. Try again in a minute.",
+        ) from error
+    url = str(result.get("url") or "")
+    if not url:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Mail is not configured yet.")
+    logger.info("mail session issued user=%s", user_id)
+    return {"url": url}
+
+
 @app.patch("/api/v1/me")
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     changes = payload.model_dump(exclude_none=True)

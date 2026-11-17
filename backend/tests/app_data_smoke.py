@@ -631,6 +631,40 @@ def main() -> int:
     app_main.finish_pending_mailbox({"user_id": "usr_q", "eyemail_id": "q@eyemail.in", "mailbox_ready": True})
     check("a ready mailbox is not called again", calls == [], str(calls))
 
+    print("the mail session link")
+    sent.clear()
+    import urllib.request as _u2
+    class Ok:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'{"customToken":"tok","email":"a@eyemail.in","url":"https://eyemail.in/login.html#t=tok"}'
+    def capture2(request, timeout=None):
+        import json as _json
+        sent.append({"url": request.full_url, "body": _json.loads(request.data) if request.data else None})
+        return Ok()
+    _u2.urlopen = capture2
+    try:
+        sender2 = EyemailSender("https://eyemail.example", secret="s3cret")
+        out = sender2.mail_session("usr_1")
+        check("mail session hits its endpoint", sent[-1]["url"].endswith("/api/internal/mail-session"), sent[-1]["url"])
+        check("mail session sends the uid", sent[-1]["body"] == {"uid": "usr_1"}, str(sent[-1]["body"]))
+        check("the link comes back", out.get("url") == "https://eyemail.in/login.html#t=tok", str(out))
+    finally:
+        _u2.urlopen = original
+
+    import urllib.error as _errs
+    def not_found(request, timeout=None):
+        raise _errs.HTTPError(request.full_url, 404, "Not Found", {}, None)
+    _u2.urlopen = not_found
+    try:
+        sender2.mail_session("usr_missing")
+        check("a missing mailbox raises", False, "no error")
+    except Exception as error:
+        check("a missing mailbox carries 404", getattr(error, "status", None) == 404, str(getattr(error, "status", None)))
+    finally:
+        _u2.urlopen = original
+
     print("cascade")
     repo.delete_account(user_id)
     left = [key for key in table.items if key[0] == f"USER#{user_id}"]

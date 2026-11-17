@@ -15,7 +15,11 @@ class EmailConfigurationError(Exception):
 
 
 class EmailDeliveryError(Exception):
-    pass
+    """A mail call failed. `status` carries the HTTP answer when there was one."""
+
+    def __init__(self, message: str, *, status: int | None = None):
+        super().__init__(message)
+        self.status = status
 
 
 class EyemailSender:
@@ -71,7 +75,7 @@ class EyemailSender:
                 # Nothing to remove: the mailbox is already gone, which is the outcome we want.
                 return {"status": "missing"}
             logger.exception(log_message)
-            raise EmailDeliveryError(failure_message) from error
+            raise EmailDeliveryError(failure_message, status=error.code) from error
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             logger.exception(log_message)
             raise EmailDeliveryError(failure_message) from error
@@ -191,6 +195,15 @@ class EyemailSender:
             {"uid": user_id, "username": username, "name": name, "recovery_email": recovery_email},
             "Mailbox could not be created right now.",
             "Eyemail failed to register a mailbox",
+        )
+
+    def mail_session(self, user_id: str) -> dict[str, Any]:
+        """Ask Eyemail for a one-time sign-in link to this person's mailbox."""
+        return self._post(
+            "/api/internal/mail-session",
+            {"uid": user_id},
+            "Your mailbox could not be opened right now.",
+            "Eyemail failed to mint a mail session",
         )
 
     def delete_mailbox(self, user_id: str) -> dict[str, Any]:

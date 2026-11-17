@@ -1,6 +1,6 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261117-eyemail2';
-import {icon} from '../../shared/icons.js?v=20261117-eyemail2';
-import {Api} from '../../shared/api-client.js?v=20261117-eyemail2';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261117-mail1';
+import {icon} from '../../shared/icons.js?v=20261117-mail1';
+import {Api} from '../../shared/api-client.js?v=20261117-mail1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;
@@ -64,7 +64,7 @@ function markFor(label){
   return `<img class="app-title-mark" src="../../../assets/branding/${name}-mark-256.png" alt="">`;
 }
 
-export function appPage(key,label){
+export function appPage(key,label,options={}){
   let box=null;
 
   const paint=()=>{
@@ -78,6 +78,7 @@ export function appPage(key,label){
       <a class="secondary page-back" href="../index.html">← All apps</a>
       <h1 class="app-title">        ${markFor(label)}<span class="app-title-text">${esc(label)}</span> <span class="badge">${esc(status)}</span></h1>
       <p class="lead">Access and the data this app keeps in your Indo Account.</p>
+      ${options.extra||''}
 
       <article class="panel">
         <div class="switch-row"><div><b>App access</b><p class="form-note">Pausing stops new data from syncing. Other apps keep working.</p></div>
@@ -111,6 +112,8 @@ export function appPage(key,label){
         <p class="form-note">Removes this app's history, saved items and preferences. Your account and the other apps stay untouched.</p>
         <button class="danger" id="app-clear-all">Clear all app data</button>
       </article>`, '../../');
+
+    if (typeof options.onMount === 'function') options.onMount();
 
     const busy=value=>document.querySelectorAll('.panel button,.switch-row button').forEach(control=>control.disabled=value);
 
