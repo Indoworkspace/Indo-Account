@@ -560,7 +560,7 @@ def main() -> int:
         check("otp uses the eyemail endpoint", sent[-1]["url"] == "https://eyemail.example/api/internal/send-mail", sent[-1]["url"])
         check("api key header is sent", sent[-1]["headers"].get("X-api-key") == "s3cret", str(sent[-1]["headers"]))
         check("otp body carries the code", "123456" in sent[-1]["body"]["body"])
-        check("recipient and sender name travel", sent[-1]["body"]["to"] == "someone@gmail.com" and sent[-1]["body"]["sender_name"] == "Indoworkspace Security")
+        check("recipient and sender name travel", sent[-1]["body"]["to"] == "someone@gmail.com" and sent[-1]["body"]["sender_name"] == "Indo Security Team")
         sender.register_mailbox(user_id="usr_1", username="a", name="A", recovery_email="r@example.com")
         check("mailbox registration hits its own endpoint", sent[-1]["url"].endswith("/api/internal/register-mailbox"), sent[-1]["url"])
         check("mailbox payload matches eyemail", sent[-1]["body"] == {"uid": "usr_1", "username": "a", "name": "A", "recovery_email": "r@example.com"}, str(sent[-1]["body"]))

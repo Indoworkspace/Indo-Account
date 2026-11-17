@@ -59,7 +59,7 @@ repository = build_repository()
 email_sender = EyemailSender(
     settings.eyemail_backend_url,
     secret=settings.eyemail_internal_secret,
-    sender_name="Indoworkspace Security",
+    sender_name="Indo Security Team",
     timeout=settings.eyemail_timeout_seconds,
 )
 # Lambda does not configure logging, so the root logger stays at WARNING and every
