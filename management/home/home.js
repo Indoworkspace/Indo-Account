@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-eyemail2';
-import {setup,user,esc} from '../shared/layout.js?v=20261117-eyemail2';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail1';
+import {setup,user,esc} from '../shared/layout.js?v=20261117-mail1';
 
 const u=user();
 const apps=[
