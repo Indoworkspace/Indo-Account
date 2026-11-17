@@ -577,6 +577,37 @@ def main() -> int:
 
     check("no SES sender is left in the module", not hasattr(__import__("app.emailer", fromlist=["x"]), "SesEmailSender"))
 
+    print("the mailbox is the account")
+    from app import main as app_main
+    rolled_back = []
+    app_main.email_sender = EyemailSender("", secret="")
+    try:
+        app_main.register_eyemail_mailbox({"user_id": "usr_x", "eyemail_id": "a@eyemail.in"})
+        check("an unconfigured mailbox raises", False, "no error")
+    except Exception as error:
+        check("an unconfigured mailbox raises", type(error).__name__ == "EmailConfigurationError", type(error).__name__)
+
+    print("alerts prefer the mailbox")
+    sent_again = []
+    def capture(destination, **kwargs):
+        sent_again.append(destination)
+    original_send = app_main.email_sender.send_account_alert
+    app_main.email_sender = type("S", (), {"send_account_alert": staticmethod(capture)})()
+    app_main.send_account_alert(
+        {"eyemail_id": "person@eyemail.in", "secondary_email": "g@example.com",
+         "secondary_email_verified": True, "notifications": {"security": True, "account": True}},
+        subject="s", heading="h", message="m",
+    )
+    check("alerts go to the mailbox when it exists", sent_again == ["person@eyemail.in"], str(sent_again))
+    sent_again.clear()
+    app_main.send_account_alert(
+        {"secondary_email": "g@example.com", "secondary_email_verified": True,
+         "notifications": {"security": True, "account": True}},
+        subject="s", heading="h", message="m",
+    )
+    check("alerts fall back to the recovery address", sent_again == ["g@example.com"], str(sent_again))
+    app_main.email_sender = EyemailSender("https://eyemail.example", secret="s3cret")
+
     print("cascade")
     repo.delete_account(user_id)
     left = [key for key in table.items if key[0] == f"USER#{user_id}"]

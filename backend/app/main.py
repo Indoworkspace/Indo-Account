@@ -340,25 +340,23 @@ SECURITY_ACTION_LABELS = {
 def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
     """Create the @eyemail.in mailbox for a brand-new account.
 
-    Runs after the account transaction has committed. A failure here is logged and swallowed:
-    the account exists and the person is signed in, and the mailbox can be created again later,
-    so signup must never fail because the mail system is briefly unavailable.
+    The mailbox is the account: the address is the person's Indo ID, and mail has to arrive at
+    it. So this is not best-effort - it raises, and the caller rolls the account back if the
+    mailbox could not be made. Signing up without a mailbox would leave an account that cannot
+    receive anything.
     """
     user_id = str(profile.get("user_id") or "")
     address = str(profile.get("eyemail_id") or "")
     username = address.split("@")[0] if "@" in address else address
     if not user_id or not username:
-        return
-    try:
-        email_sender.register_mailbox(
-            user_id=user_id,
-            username=username,
-            name=str(profile.get("full_name") or ""),
-            recovery_email=str(profile.get("secondary_email") or ""),
-        )
-        logger.info("mailbox registered user=%s", user_id)
-    except (EmailConfigurationError, EmailDeliveryError):
-        logger.exception("mailbox registration failed user=%s username=%s", user_id, username)
+        raise EmailConfigurationError("The account has no address to give a mailbox.")
+    email_sender.register_mailbox(
+        user_id=user_id,
+        username=username,
+        name=str(profile.get("full_name") or ""),
+        recovery_email=str(profile.get("secondary_email") or ""),
+    )
+    logger.info("mailbox registered user=%s", user_id)
 
 
 def delete_eyemail_mailbox(user_id: str) -> None:
@@ -390,13 +388,22 @@ def send_account_alert(
     preference: str | None = "account",
 ) -> None:
     notifications = state.get("notifications") or {}
-    destination = str(state.get("secondary_email") or "").strip().lower()
+    # The mailbox is the person's real address now, so ordinary alerts go there. The recovery
+    # address is only a fallback for accounts whose mailbox does not exist yet.
+    mailbox = str(state.get("eyemail_id") or "").strip().lower()
+    recovery = str(state.get("secondary_email") or "").strip().lower()
+    if mailbox:
+        destination = mailbox
+    elif recovery and state.get("secondary_email_verified"):
+        destination = recovery
+    else:
+        destination = ""
     wanted = preference or "account"
     # One line per decision, so CloudWatch can answer "did a mail go out, and why not"
     # without guessing. Only failures used to be logged, which made a quiet log look like
     # proof that nothing was sent.
-    if not destination or not state.get("secondary_email_verified"):
-        logger.info("alert skipped preference=%s reason=no_verified_destination", wanted)
+    if not destination:
+        logger.info("alert skipped preference=%s reason=no_destination", wanted)
         return
     # Nothing is sent unless the user turned that notification on. Verification codes
     # (OTP) are a separate path and are unaffected by these preferences.
@@ -668,7 +675,20 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
         payload.model_dump(),
         require_email_verification=settings.require_signup_email_otp,
     )
-    register_eyemail_mailbox(profile)
+    try:
+        register_eyemail_mailbox(profile)
+    except (EmailConfigurationError, EmailDeliveryError):
+        # No mailbox means no usable account, so undo the signup instead of leaving a person
+        # with an address that cannot receive mail.
+        logger.exception("signup rolled back: mailbox failed user=%s", profile.get("user_id"))
+        try:
+            repository.delete_account(str(profile.get("user_id") or ""), require_verification=False)
+        except Exception:
+            logger.exception("rollback failed user=%s", profile.get("user_id"))
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Your mailbox could not be created just now. Please try again in a moment.",
+        ) from None
     return {"token": token, "profile": profile}
 
 
