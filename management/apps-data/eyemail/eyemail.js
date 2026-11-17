@@ -1,5 +1,5 @@
-import {appPage} from '../app-page.js?v=20261117-mail1';
-import {Api} from '../../../shared/api-client.js?v=20261117-mail1';
+import {appPage} from '../app-page.js?v=20261117-mail2';
+import {Api} from '../../../shared/api-client.js?v=20261117-mail2';
 
 const panel = `
   <article class="panel">
@@ -35,5 +35,12 @@ appPage('EYEMAIL', 'Eyemail', {
         button.textContent = 'Open mail';
       }
     };
+
+    // Arriving from the mail site's "Sign in with Indo Account" button: open the inbox at once,
+    // so the person is not asked to press the same button twice.
+    if (new URLSearchParams(location.search).get('open') === 'mail') {
+      history.replaceState(null, '', location.pathname);
+      button.click();
+    }
   },
 });

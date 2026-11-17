@@ -1,4 +1,4 @@
-import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261117-mail1';
+import {setup,user,Store,esc,$,modal,download,toast} from '../shared/layout.js?v=20261117-mail2';
 
 const u=user();
 

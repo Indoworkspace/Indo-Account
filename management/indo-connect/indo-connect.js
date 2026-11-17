@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail1';
-import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261117-mail1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail2';
+import {setup,Store,esc,$,modal,toast} from '../shared/layout.js?v=20261117-mail2';
 
 const scopeLabels={
   openid:'Confirm your Indo sign-in',
