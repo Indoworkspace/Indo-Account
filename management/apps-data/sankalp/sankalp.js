@@ -1,3 +1,3 @@
-import {appPage} from '../app-page.js?v=20261116-font1';
+import {appPage} from '../app-page.js?v=20261117-eyemail1';
 
 appPage('SANKALPA','Sankalp');

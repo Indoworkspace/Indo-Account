@@ -214,7 +214,8 @@ def main() -> int:
     r = client.get("/api/v1/me/apps", headers=user_headers)
     check("list apps 200", r.status_code == 200, r.text)
     apps = r.json()["apps"]
-    check("three app boxes", len(apps) == 3, str([a["key"] for a in apps]))
+    check("four app boxes", len(apps) == 4, str([a["key"] for a in apps]))
+    check("eyemail slot is present", any(a["key"] == "EYEMAIL" for a in apps))
     check("nothing connected yet", all(a["connected"] is False for a in apps))
 
     print("handoff")
@@ -532,6 +533,40 @@ def main() -> int:
     check("blob is emptied", "history" not in blob_after and "saved" not in blob_after, str(blob_after))
     again = repo.migrate_app_boxes()
     check("running twice changes nothing", again["history"] == 0, str(again))
+
+    print("eyemail is the only mail transport")
+    import urllib.request as _urllib
+    from app.emailer import EyemailSender
+    sent = []
+
+    class FakeResponse:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def read(self): return b'{"status":"sent"}'
+
+    def fake_urlopen(request, timeout=None):
+        import json as _json
+        sent.append({"url": request.full_url, "timeout": timeout,
+                     "headers": dict(request.header_items()), "body": _json.loads(request.data)})
+        return FakeResponse()
+
+    original = _urllib.urlopen
+    _urllib.urlopen = fake_urlopen
+    try:
+        sender = EyemailSender("https://eyemail.example", secret="s3cret", timeout=6.0)
+        sender.send_signup_otp("someone@gmail.com", "123456")
+        check("otp uses the eyemail endpoint", sent[-1]["url"] == "https://eyemail.example/api/internal/send-mail", sent[-1]["url"])
+        check("api key header is sent", sent[-1]["headers"].get("X-api-key") == "s3cret", str(sent[-1]["headers"]))
+        check("otp body carries the code", "123456" in sent[-1]["body"]["body"])
+        check("recipient and sender name travel", sent[-1]["body"]["to"] == "someone@gmail.com" and sent[-1]["body"]["sender_name"] == "Indoworkspace Security")
+        sender.register_mailbox(user_id="usr_1", address="a@eyemail.in", name="A")
+        check("mailbox registration hits its own endpoint", sent[-1]["url"].endswith("/api/internal/register-mailbox"), sent[-1]["url"])
+        check("mailbox payload is uid, email, name", sent[-1]["body"] == {"uid": "usr_1", "email": "a@eyemail.in", "name": "A"}, str(sent[-1]["body"]))
+    finally:
+        _urllib.urlopen = original
+
+    check("no SES sender is left in the module", not hasattr(__import__("app.emailer", fromlist=["x"]), "SesEmailSender"))
 
     print("cascade")
     repo.delete_account(user_id)
