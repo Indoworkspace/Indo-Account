@@ -547,8 +547,9 @@ def main() -> int:
 
     def fake_urlopen(request, timeout=None):
         import json as _json
-        sent.append({"url": request.full_url, "timeout": timeout,
-                     "headers": dict(request.header_items()), "body": _json.loads(request.data)})
+        sent.append({"url": request.full_url, "timeout": timeout, "method": request.get_method(),
+                     "headers": dict(request.header_items()),
+                     "body": _json.loads(request.data) if request.data else None})
         return FakeResponse()
 
     original = _urllib.urlopen
@@ -560,9 +561,17 @@ def main() -> int:
         check("api key header is sent", sent[-1]["headers"].get("X-api-key") == "s3cret", str(sent[-1]["headers"]))
         check("otp body carries the code", "123456" in sent[-1]["body"]["body"])
         check("recipient and sender name travel", sent[-1]["body"]["to"] == "someone@gmail.com" and sent[-1]["body"]["sender_name"] == "Indoworkspace Security")
-        sender.register_mailbox(user_id="usr_1", address="a@eyemail.in", name="A")
+        sender.register_mailbox(user_id="usr_1", username="a", name="A", recovery_email="r@example.com")
         check("mailbox registration hits its own endpoint", sent[-1]["url"].endswith("/api/internal/register-mailbox"), sent[-1]["url"])
-        check("mailbox payload is uid, email, name", sent[-1]["body"] == {"uid": "usr_1", "email": "a@eyemail.in", "name": "A"}, str(sent[-1]["body"]))
+        check("mailbox payload matches eyemail", sent[-1]["body"] == {"uid": "usr_1", "username": "a", "name": "A", "recovery_email": "r@example.com"}, str(sent[-1]["body"]))
+        sender.rename_mailbox("usr_1", "New Name")
+        check("rename is a PATCH on the uid", sent[-1]["method"] == "PATCH" and sent[-1]["url"].endswith("/api/internal/register-mailbox/usr_1"), str(sent[-1]))
+        check("rename sends only the name", sent[-1]["body"] == {"name": "New Name"}, str(sent[-1]["body"]))
+        import urllib.error as _errors
+        def missing(request, timeout=None):
+            raise _errors.HTTPError(request.full_url, 404, "Not Found", {}, None)
+        _urllib.urlopen = missing
+        check("deleting a missing mailbox counts as done", sender.delete_mailbox("usr_gone") == {"status": "missing"})
     finally:
         _urllib.urlopen = original
 

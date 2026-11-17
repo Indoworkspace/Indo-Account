@@ -346,17 +346,39 @@ def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
     """
     user_id = str(profile.get("user_id") or "")
     address = str(profile.get("eyemail_id") or "")
-    if not user_id or not address:
+    username = address.split("@")[0] if "@" in address else address
+    if not user_id or not username:
         return
     try:
         email_sender.register_mailbox(
             user_id=user_id,
-            address=address,
+            username=username,
             name=str(profile.get("full_name") or ""),
+            recovery_email=str(profile.get("secondary_email") or ""),
         )
         logger.info("mailbox registered user=%s", user_id)
     except (EmailConfigurationError, EmailDeliveryError):
-        logger.exception("mailbox registration failed user=%s address=%s", user_id, address)
+        logger.exception("mailbox registration failed user=%s username=%s", user_id, username)
+
+
+def delete_eyemail_mailbox(user_id: str) -> None:
+    """Remove the mailbox when the account goes. Never blocks the deletion."""
+    try:
+        email_sender.delete_mailbox(user_id)
+        logger.info("mailbox deleted user=%s", user_id)
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.exception("mailbox deletion failed user=%s", user_id)
+
+
+def rename_eyemail_mailbox(user_id: str, name: str) -> None:
+    """Keep the display name in step. Cosmetic, so it never blocks the profile update."""
+    if not name:
+        return
+    try:
+        email_sender.rename_mailbox(user_id, name)
+        logger.info("mailbox renamed user=%s", user_id)
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.exception("mailbox rename failed user=%s", user_id)
 
 
 def send_account_alert(
@@ -795,6 +817,8 @@ def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     changes = payload.model_dump(exclude_none=True)
     state = repository.update_profile(user_id, changes)
+    if "full_name" in changes:
+        rename_eyemail_mailbox(user_id, str(state.get("full_name") or ""))
     if changes:
         send_account_alert(
             state,
@@ -1114,6 +1138,7 @@ def delete_me(
         verification_token=payload.verification_token if payload else None,
         require_verification=settings.require_account_delete_otp,
     )
+    delete_eyemail_mailbox(user_id)
     send_account_alert(
         state,
         subject="Your Indo Account was deleted",

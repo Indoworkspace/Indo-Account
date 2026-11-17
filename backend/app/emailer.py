@@ -35,16 +35,25 @@ class EyemailSender:
         self.sender_name = sender_name
         self.timeout = timeout
 
-    def _post(self, path: str, payload: dict[str, Any], failure_message: str, log_message: str) -> dict[str, Any]:
+    def _post(
+        self,
+        path: str,
+        payload: dict[str, Any] | None,
+        failure_message: str,
+        log_message: str,
+        *,
+        method: str = "POST",
+    ) -> dict[str, Any]:
         if not self.base_url:
             raise EmailConfigurationError("Email delivery is not configured yet.")
         if not self.secret:
             raise EmailConfigurationError("Email delivery is not configured yet.")
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
             f"{self.base_url}{path}",
-            data=json.dumps(payload).encode("utf-8"),
+            data=body,
             headers={"Content-Type": "application/json", "X-API-Key": self.secret},
-            method="POST",
+            method=method,
         )
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
@@ -57,7 +66,13 @@ class EyemailSender:
                     return {}
         except EmailDeliveryError:
             raise
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as error:
+        except urllib.error.HTTPError as error:
+            if error.code == 404 and method == "DELETE":
+                # Nothing to remove: the mailbox is already gone, which is the outcome we want.
+                return {"status": "missing"}
+            logger.exception(log_message)
+            raise EmailDeliveryError(failure_message) from error
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
             logger.exception(log_message)
             raise EmailDeliveryError(failure_message) from error
 
@@ -165,11 +180,35 @@ class EyemailSender:
             log_message="Eyemail failed to deliver a support confirmation",
         )
 
-    def register_mailbox(self, *, user_id: str, address: str, name: str) -> dict[str, Any]:
-        """Ask Eyemail to create the mailbox for a new account."""
+    def register_mailbox(self, *, user_id: str, username: str, name: str, recovery_email: str = "") -> dict[str, Any]:
+        """Ask Eyemail to create the mailbox for a new account.
+
+        Eyemail keys the mailbox by our user id and takes the local part separately, so the
+        address is never re-parsed on their side.
+        """
         return self._post(
             "/api/internal/register-mailbox",
-            {"uid": user_id, "email": address, "name": name},
+            {"uid": user_id, "username": username, "name": name, "recovery_email": recovery_email},
             "Mailbox could not be created right now.",
             "Eyemail failed to register a mailbox",
+        )
+
+    def delete_mailbox(self, user_id: str) -> dict[str, Any]:
+        """Remove the mailbox when the account is deleted. A missing mailbox is not an error."""
+        return self._post(
+            f"/api/internal/register-mailbox/{user_id}",
+            None,
+            "Mailbox could not be removed right now.",
+            "Eyemail failed to delete a mailbox",
+            method="DELETE",
+        )
+
+    def rename_mailbox(self, user_id: str, name: str) -> dict[str, Any]:
+        """Change the display name only. The address and the mail never move."""
+        return self._post(
+            f"/api/internal/register-mailbox/{user_id}",
+            {"name": name},
+            "Mailbox name could not be updated right now.",
+            "Eyemail failed to rename a mailbox",
+            method="PATCH",
         )
