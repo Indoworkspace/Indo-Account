@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-email1';
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261117-email1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-eyemail2';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261117-eyemail2';
 
 const u=user();
 const rowIcon={id:'id',name:'user',nickname:'tag',gender:'gender',email:'envelope',phone:'phone',birthday:'cake',language:'translate',home:'house',work:'briefcase',other:'pin'};
@@ -16,7 +16,7 @@ const row=([kind,label,key,value])=>{const verified=key==='secondary_email'?u.se
 const initials=name=>name.trim().split(/\s+/).filter(Boolean).map(part=>part[0]).join('').slice(0,2).toUpperCase();
 const photoContent=()=>u.profile_photo?`<img src="${esc(u.profile_photo)}" alt="${esc(u.full_name)} profile photo">`:`<span>${esc(initials(u.full_name))}</span>`;
 
-setup('personal-info',`<h1>Personal info</h1><p class="lead">Manage the information shared across your Indo apps.</p><section class="info-list"><button class="info-row profile-photo-row" data-key="profile_photo" type="button"><span class="row-photo">${photoContent()}</span><span><b>Profile picture</b><small>${u.profile_photo?'Photo added':'Add a profile picture'}</small></span><span class="row-action">${u.profile_photo?'Change':'Add'}</span></button><div class="info-row static"><span class="info-icon icon-id">${icon('id')}</span><span><b>Primary email</b><small>${esc(u.eyemail_id)}</small></span><span class="locked">Locked</span></div>${rows.map(row).join('')}</section>`);
+setup('personal-info',`<h1>Personal info</h1><p class="lead">Manage the information shared across your Indo apps.</p><section class="info-list"><button class="info-row profile-photo-row" data-key="profile_photo" type="button"><span class="row-photo">${photoContent()}</span><span><b>Profile picture</b><small>${u.profile_photo?'Photo added':'Add a profile picture'}</small></span><span class="row-action">${u.profile_photo?'Change':'Add'}</span></button><div class="info-row static"><span class="info-icon icon-id">${icon('id')}</span><span><b>Primary Eyemail</b><small>${esc(u.eyemail_id)}</small></span><span class="locked">Locked</span></div>${rows.map(row).join('')}</section>`);
 
 const style=document.createElement('style');
 style.textContent=`
