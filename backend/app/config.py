@@ -7,7 +7,7 @@ from dataclasses import dataclass
 def _origins() -> tuple[str, ...]:
     raw = os.getenv(
         "ALLOWED_ORIGINS",
-        "https://indoworkspace.github.io,http://localhost:8000,http://127.0.0.1:8000",
+        "https://indoworkspace.github.io,https://eyemail.in,https://www.eyemail.in,http://localhost:8000,http://127.0.0.1:8000",
     )
     return tuple(origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip())
 
@@ -20,6 +20,10 @@ def _enabled(name: str, default: str = "false") -> bool:
 class Settings:
     table_name: str = os.getenv("DYNAMODB_TABLE", "UnifiedAppTable")
     aws_region: str = os.getenv("AWS_REGION", "ap-southeast-2")
+    # Eyemail is the mail system: mailboxes, storage and delivery all live there.
+    eyemail_backend_url: str = os.getenv("EYEMAIL_BACKEND_URL", "").rstrip("/")
+    eyemail_internal_secret: str = os.getenv("EYEMAIL_INTERNAL_SECRET", "")
+    eyemail_timeout_seconds: float = float(os.getenv("EYEMAIL_TIMEOUT_SECONDS", "6"))
     allowed_origins: tuple[str, ...] = _origins()
     session_days: int = int(os.getenv("SESSION_DAYS", "30"))
     session_max_active: int = int(os.getenv("SESSION_MAX_ACTIVE", "10"))

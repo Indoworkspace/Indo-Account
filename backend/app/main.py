@@ -19,7 +19,7 @@ from mangum import Mangum
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .config import settings
-from .emailer import EmailConfigurationError, EmailDeliveryError, SesEmailSender
+from .emailer import EmailConfigurationError, EmailDeliveryError, EyemailSender
 from .repository import (
     AppPausedError,
     AuthenticationError,
@@ -54,9 +54,13 @@ def build_repository() -> DynamoAccountRepository:
 
 
 repository = build_repository()
-email_sender = SesEmailSender(
-    boto3.client("sesv2", region_name=settings.aws_region),
-    from_email=settings.otp_from_email,
+# Eyemail is the only mail transport. It stores internal mail in Firestore and relays
+# external mail itself, so this service no longer talks to SES at all.
+email_sender = EyemailSender(
+    settings.eyemail_backend_url,
+    secret=settings.eyemail_internal_secret,
+    sender_name="Indoworkspace Security",
+    timeout=settings.eyemail_timeout_seconds,
 )
 # Lambda does not configure logging, so the root logger stays at WARNING and every
 # `logger.info` was silently dropped — only exceptions ever reached CloudWatch, which made a
@@ -259,7 +263,7 @@ class SupportRequest(BaseModel):
     message: str = Field(min_length=20, max_length=2000)
 
 
-AppKey = Literal["SANKALPA", "EYESEARCH", "EYEBROWSE"]
+AppKey = Literal["SANKALPA", "EYESEARCH", "EYEBROWSE", "EYEMAIL"]
 
 
 class AppAuthorizeRequest(BaseModel):
@@ -314,6 +318,14 @@ APP_CLIENTS = {
     "SANKALPA": {"name": "Sankalp", "redirect_prefixes": ("sankalp://", "https://sankalp.indoworkspace.in/")},
     "EYESEARCH": {"name": "Eyesearch Search Engine", "redirect_prefixes": ("eyesearch://", "https://eyesearch.indoworkspace.in/")},
     "EYEBROWSE": {"name": "Eyebrowse Browser", "redirect_prefixes": ("indobrowse://",)},
+    "EYEMAIL": {
+        "name": "Eyemail",
+        "redirect_prefixes": (
+            "https://eyemail.in/",
+            "https://www.eyemail.in/",
+            "https://indoworkspace.github.io/eyemail-frontend/",
+        ),
+    },
 }
 
 
@@ -323,6 +335,28 @@ SECURITY_ACTION_LABELS = {
     "delete_account": "permanently deleting your Indo Account",
     "export_data": "downloading a copy of your Indo Account data",
 }
+
+
+def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
+    """Create the @eyemail.in mailbox for a brand-new account.
+
+    Runs after the account transaction has committed. A failure here is logged and swallowed:
+    the account exists and the person is signed in, and the mailbox can be created again later,
+    so signup must never fail because the mail system is briefly unavailable.
+    """
+    user_id = str(profile.get("user_id") or "")
+    address = str(profile.get("eyemail_id") or "")
+    if not user_id or not address:
+        return
+    try:
+        email_sender.register_mailbox(
+            user_id=user_id,
+            address=address,
+            name=str(profile.get("full_name") or ""),
+        )
+        logger.info("mailbox registered user=%s", user_id)
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.exception("mailbox registration failed user=%s address=%s", user_id, address)
 
 
 def send_account_alert(
@@ -612,6 +646,7 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
         payload.model_dump(),
         require_email_verification=settings.require_signup_email_otp,
     )
+    register_eyemail_mailbox(profile)
     return {"token": token, "profile": profile}
 
 

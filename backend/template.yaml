@@ -5,7 +5,16 @@ Description: Indo Account FastAPI backend
 Parameters:
   AllowedOrigins:
     Type: String
-    Default: https://indoworkspace.github.io
+    Default: https://indoworkspace.github.io,https://eyemail.in,https://www.eyemail.in
+  EyemailBackendUrl:
+    Type: String
+    Default: ''
+    Description: Base URL of the Eyemail backend, which now sends all mail.
+  EyemailInternalSecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Shared key sent as X-API-Key to the Eyemail backend.
   OtpFromEmail:
     Type: String
     Default: no-reply@eyemail.in
@@ -39,6 +48,8 @@ Resources:
           OTP_FROM_EMAIL: !Ref OtpFromEmail
           SUPPORT_TO_EMAIL: !Ref SupportToEmail
           OTP_HASH_SECRET: !Ref OtpHashSecret
+          EYEMAIL_BACKEND_URL: !Ref EyemailBackendUrl
+          EYEMAIL_INTERNAL_SECRET: !Ref EyemailInternalSecret
           OTP_TTL_SECONDS: '600'
           OTP_RESEND_SECONDS: '60'
           OTP_VERIFICATION_SECONDS: '900'
@@ -75,11 +86,6 @@ Resources:
               Resource:
                 - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/UnifiedAppTable
                 - !Sub arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/UnifiedAppTable/index/*
-            - Effect: Allow
-              Action:
-                - ses:SendEmail
-              Resource:
-                - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/eyemail.in
       FunctionUrlConfig:
         AuthType: NONE
         Cors:

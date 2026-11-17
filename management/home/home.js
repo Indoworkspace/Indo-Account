@@ -1,11 +1,12 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261116-font1';
-import {setup,user,esc} from '../shared/layout.js?v=20261116-font1';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-eyemail1';
+import {setup,user,esc} from '../shared/layout.js?v=20261117-eyemail1';
 
 const u=user();
 const apps=[
   ['Sankalp','AI Assistant','../apps-data/sankalp/index.html',''],
   ['Eyesearch','Search Engine','../apps-data/eyesearch/index.html','eye'],
-  ['Eyebrowse','Browser','../apps-data/eyebrowse/index.html','browse']
+  ['Eyebrowse','Browser','../apps-data/eyebrowse/index.html','browse'],
+  ['Eyemail','Mail','../apps-data/eyemail/index.html','mail']
 ];
 const homeIcons={security:'shield','personal-info':'id',sankalp:'chat','indo-connect':'plug'};
 const asset=name=>iconSvg(homeIcons[name]||'info',22);
@@ -28,7 +29,7 @@ setup('home',`<div class="account-search"><label class="search-box" for="account
   <a class="overview-card" href="../apps-data/index.html">${asset('sankalp')}<span class="overview-copy"><b>App center</b><small>Manage Sankalp, Eyesearch and Eyebrowse.</small></span><span class="card-arrow">›</span></a>
   <a class="overview-card" href="../indo-connect/index.html">${asset('indo-connect')}<span class="overview-copy"><b>Indo Connect</b><small>Review apps and websites using your Indo sign-in.</small></span><span class="card-arrow">›</span></a>
 </div></section>
-<section class="home-section"><div class="section-title"><h2>Your Indo apps</h2><a href="../apps-data/index.html">View all</a></div><div class="app-list">${apps.map(([name,description,href,kind])=>`<div class="app-card"><div class="app-badge logo"><img src="../../assets/branding/${name.toLowerCase()}-mark-256.png" alt=""></div><div class="app-card-copy"><h3>${esc(name)}</h3><p>${description}</p></div><a class="secondary" href="${href}">Open app space</a></div>`).join('')}</div></section>`);
+<section class="home-section"><div class="section-title"><h2>Your Indo apps</h2><a href="../apps-data/index.html">View all</a></div><div class="app-list">${apps.map(([name,description,href,kind])=>`<div class="app-card"><div class="app-badge logo">${name.toLowerCase()==='eyemail'?iconSvg('envelope',30):`<img src="../../assets/branding/${name.toLowerCase()}-mark-256.png" alt="">`}</div><div class="app-card-copy"><h3>${esc(name)}</h3><p>${description}</p></div><a class="secondary" href="${href}">Open app space</a></div>`).join('')}</div></section>`);
 
 // Mobile receives the same visual hierarchy as desktop, with generous tap targets.
 const mobileStyle=document.createElement('style');
