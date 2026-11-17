@@ -1,6 +1,6 @@
-import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261117-mail3';
-import {icon} from '../../shared/icons.js?v=20261117-mail3';
-import {Api} from '../../shared/api-client.js?v=20261117-mail3';
+import {setup,esc,$,toast,modal,download,Store} from '../shared/layout.js?v=20261117-split1';
+import {icon} from '../../shared/icons.js?v=20261117-split1';
+import {Api} from '../../shared/api-client.js?v=20261117-split1';
 
 const when=value=>{if(!value)return 'Never';const date=new Date(value);return Number.isNaN(date.getTime())?'Unknown':date.toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
 const rows=(items,empty,row)=>items?.length?`<ul class="data-list">${items.map(row).join('')}</ul>`:`<p class="form-note">${empty}</p>`;

@@ -1,6 +1,6 @@
-import {Store} from '../../shared/session-store.js?v=20261117-mail3';
-import {icon,iconStyle} from '../../shared/icons.js?v=20261117-mail3';
-import {Api} from '../../shared/api-client.js?v=20261117-mail3';
+import {Store} from '../../shared/session-store.js?v=20261117-split1';
+import {icon,iconStyle} from '../../shared/icons.js?v=20261117-split1';
+import {Api} from '../../shared/api-client.js?v=20261117-split1';
 
 // The app trades its own token for a short-lived account session and opens this panel
 // with it in the fragment. Adopt it before any page decides to redirect, so every

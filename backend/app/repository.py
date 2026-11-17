@@ -1046,9 +1046,6 @@ class DynamoAccountRepository:
             "eyemail_id": eyemail,
             "secondary_email": email,
             "secondary_email_verified": verification_key is not None,
-            # The mailbox is created just after this row. Until Eyemail confirms it, this stays
-            # false so the account can finish the job on the next sign-in instead of being deleted.
-            "mailbox_ready": False,
             "phone": phone,
             "phone_verified": False,
             "dob": payload["dob"],
@@ -1849,14 +1846,6 @@ class DynamoAccountRepository:
         session = next((item for item in response.get("Items", []) if item.get("token_hash") == digest), None)
         if session:
             self.table.delete_item(Key={"PK": session["PK"], "SK": session["SK"]})
-
-    def set_mailbox_ready(self, user_id: str, ready: bool = True) -> None:
-        """Record whether the @eyemail.in mailbox exists for this account."""
-        self.table.update_item(
-            Key=self._profile_key(user_id),
-            UpdateExpression="SET mailbox_ready = :ready, updated_at = :now",
-            ExpressionAttributeValues={":ready": ready, ":now": utc_now()},
-        )
 
     def update_profile(self, user_id: str, changes: dict[str, Any]) -> dict[str, Any]:
         allowed = {

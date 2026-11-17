@@ -337,83 +337,6 @@ SECURITY_ACTION_LABELS = {
 }
 
 
-def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
-    """Create the @eyemail.in mailbox for a brand-new account.
-
-    The mailbox is the account: the address is the person's Indo ID, and mail has to arrive at
-    it. So this is not best-effort - it raises, and the caller rolls the account back if the
-    mailbox could not be made. Signing up without a mailbox would leave an account that cannot
-    receive anything.
-    """
-    user_id = str(profile.get("user_id") or "")
-    address = str(profile.get("eyemail_id") or "")
-    username = address.split("@")[0] if "@" in address else address
-    if not user_id or not username:
-        raise EmailConfigurationError("The account has no address to give a mailbox.")
-    email_sender.register_mailbox(
-        user_id=user_id,
-        username=username,
-        name=str(profile.get("full_name") or ""),
-        recovery_email=str(profile.get("secondary_email") or ""),
-    )
-    logger.info("mailbox registered user=%s", user_id)
-
-
-def finish_pending_mailbox(state: dict[str, Any]) -> dict[str, Any]:
-    """Try once more to create a mailbox that a previous attempt did not confirm.
-
-    Called on sign-in and when the panel asks for the account, so a mailbox whose first attempt
-    timed out finishes itself. Idempotent on the Eyemail side: an existing mailbox answers
-    `exists`, which counts as done. Never raises - a failure only leaves the flag false.
-    """
-    if state.get("mailbox_ready"):
-        return state
-    user_id = str(state.get("user_id") or "")
-    address = str(state.get("eyemail_id") or "")
-    username = address.split("@")[0] if "@" in address else address
-    if not user_id or not username:
-        return state
-    try:
-        email_sender.register_mailbox(
-            user_id=user_id,
-            username=username,
-            name=str(state.get("full_name") or ""),
-            recovery_email=str(state.get("secondary_email") or ""),
-        )
-    except (EmailConfigurationError, EmailDeliveryError):
-        logger.warning("mailbox still pending user=%s", user_id)
-        return state
-    try:
-        repository.set_mailbox_ready(user_id)
-    except Exception:
-        logger.exception("could not record the mailbox state user=%s", user_id)
-        return state
-    logger.info("mailbox finished on retry user=%s", user_id)
-    state = dict(state)
-    state["mailbox_ready"] = True
-    return state
-
-
-def delete_eyemail_mailbox(user_id: str) -> None:
-    """Remove the mailbox when the account goes. Never blocks the deletion."""
-    try:
-        email_sender.delete_mailbox(user_id)
-        logger.info("mailbox deleted user=%s", user_id)
-    except (EmailConfigurationError, EmailDeliveryError):
-        logger.exception("mailbox deletion failed user=%s", user_id)
-
-
-def rename_eyemail_mailbox(user_id: str, name: str) -> None:
-    """Keep the display name in step. Cosmetic, so it never blocks the profile update."""
-    if not name:
-        return
-    try:
-        email_sender.rename_mailbox(user_id, name)
-        logger.info("mailbox renamed user=%s", user_id)
-    except (EmailConfigurationError, EmailDeliveryError):
-        logger.exception("mailbox rename failed user=%s", user_id)
-
-
 def send_account_alert(
     state: dict[str, Any],
     *,
@@ -710,24 +633,6 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
         payload.model_dump(),
         require_email_verification=settings.require_signup_email_otp,
     )
-    try:
-        register_eyemail_mailbox(profile)
-    except (EmailConfigurationError, EmailDeliveryError):
-        # The account is kept, not deleted. A mailbox may exist on the Eyemail side even when
-        # the answer never arrived, and deleting the account would strand that mailbox and keep
-        # the name taken. The mailbox finishes itself on the next sign-in instead.
-        logger.exception("mailbox pending after signup user=%s", profile.get("user_id"))
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Your account was created and your mailbox is being set up. "
-            "Please sign in again in a minute.",
-        ) from None
-    try:
-        repository.set_mailbox_ready(str(profile.get("user_id") or ""))
-        profile = dict(profile)
-        profile["mailbox_ready"] = True
-    except Exception:
-        logger.exception("could not record the mailbox state user=%s", profile.get("user_id"))
     return {"token": token, "profile": profile}
 
 
@@ -743,7 +648,6 @@ def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
             account_failure_limit=settings.login_account_failure_limit,
             ip_failure_limit=settings.login_ip_failure_limit,
         )
-        profile = finish_pending_mailbox(profile)
         send_account_alert(
             profile,
             subject="New sign-in to your Indo Account",
@@ -866,49 +770,17 @@ def logout(token: Annotated[str, Depends(bearer_token)]) -> Response:
 def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
     try:
         user_id = repository.user_from_token(token)
-        state = repository.get_account_state(user_id, current_token=token)
-        return finish_pending_mailbox(state)
+        return repository.get_account_state(user_id, current_token=token)
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
     except NotFoundError as error:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
 
-@app.get("/api/v1/me/mail-session")
-def mail_session(user_id: Annotated[str, Depends(current_user)]) -> dict[str, str]:
-    """Give the panel a one-time link that opens this person's mailbox.
-
-    The link carries a short-lived Firebase token in its fragment, minted only when the person
-    clicks, and it is never logged here.
-    """
-    try:
-        result = email_sender.mail_session(user_id)
-    except EmailConfigurationError as error:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Mail is not configured yet.") from error
-    except EmailDeliveryError as error:
-        # Eyemail answers 404 for a missing mailbox and 409 for a mailbox with no login record.
-        if getattr(error, "status", None) in (404, 409):
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                "Your mailbox is still being set up. Try again in a minute.",
-            ) from error
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Your mailbox could not be opened right now. Try again in a minute.",
-        ) from error
-    url = str(result.get("url") or "")
-    if not url:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Mail is not configured yet.")
-    logger.info("mail session issued user=%s", user_id)
-    return {"url": url}
-
-
 @app.patch("/api/v1/me")
 def update_me(payload: ProfileUpdate, user_id: Annotated[str, Depends(current_user)]) -> dict[str, Any]:
     changes = payload.model_dump(exclude_none=True)
     state = repository.update_profile(user_id, changes)
-    if "full_name" in changes:
-        rename_eyemail_mailbox(user_id, str(state.get("full_name") or ""))
     if changes:
         send_account_alert(
             state,
@@ -1228,7 +1100,6 @@ def delete_me(
         verification_token=payload.verification_token if payload else None,
         require_verification=settings.require_account_delete_otp,
     )
-    delete_eyemail_mailbox(user_id)
     send_account_alert(
         state,
         subject="Your Indo Account was deleted",

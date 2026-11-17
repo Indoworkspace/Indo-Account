@@ -561,109 +561,10 @@ def main() -> int:
         check("api key header is sent", sent[-1]["headers"].get("X-api-key") == "s3cret", str(sent[-1]["headers"]))
         check("otp body carries the code", "123456" in sent[-1]["body"]["body"])
         check("recipient and sender name travel", sent[-1]["body"]["to"] == "someone@gmail.com" and sent[-1]["body"]["sender_name"] == "Indo Security Team")
-        sender.register_mailbox(user_id="usr_1", username="a", name="A", recovery_email="r@example.com")
-        check("mailbox registration hits its own endpoint", sent[-1]["url"].endswith("/api/internal/register-mailbox"), sent[-1]["url"])
-        check("mailbox payload matches eyemail", sent[-1]["body"] == {"uid": "usr_1", "username": "a", "name": "A", "recovery_email": "r@example.com"}, str(sent[-1]["body"]))
-        sender.rename_mailbox("usr_1", "New Name")
-        check("rename is a PATCH on the uid", sent[-1]["method"] == "PATCH" and sent[-1]["url"].endswith("/api/internal/register-mailbox/usr_1"), str(sent[-1]))
-        check("rename sends only the name", sent[-1]["body"] == {"name": "New Name"}, str(sent[-1]["body"]))
-        import urllib.error as _errors
-        def missing(request, timeout=None):
-            raise _errors.HTTPError(request.full_url, 404, "Not Found", {}, None)
-        _urllib.urlopen = missing
-        check("deleting a missing mailbox counts as done", sender.delete_mailbox("usr_gone") == {"status": "missing"})
     finally:
         _urllib.urlopen = original
 
     check("no SES sender is left in the module", not hasattr(__import__("app.emailer", fromlist=["x"]), "SesEmailSender"))
-
-    print("the mailbox is the account")
-    from app import main as app_main
-    rolled_back = []
-    app_main.email_sender = EyemailSender("", secret="")
-    try:
-        app_main.register_eyemail_mailbox({"user_id": "usr_x", "eyemail_id": "a@eyemail.in"})
-        check("an unconfigured mailbox raises", False, "no error")
-    except Exception as error:
-        check("an unconfigured mailbox raises", type(error).__name__ == "EmailConfigurationError", type(error).__name__)
-
-    print("alerts prefer the mailbox")
-    sent_again = []
-    def capture(destination, **kwargs):
-        sent_again.append(destination)
-    original_send = app_main.email_sender.send_account_alert
-    app_main.email_sender = type("S", (), {"send_account_alert": staticmethod(capture)})()
-    app_main.send_account_alert(
-        {"eyemail_id": "person@eyemail.in", "secondary_email": "g@example.com",
-         "secondary_email_verified": True, "notifications": {"security": True, "account": True}},
-        subject="s", heading="h", message="m",
-    )
-    check("alerts go to the mailbox when it exists", sent_again == ["person@eyemail.in"], str(sent_again))
-    sent_again.clear()
-    app_main.send_account_alert(
-        {"secondary_email": "g@example.com", "secondary_email_verified": True,
-         "notifications": {"security": True, "account": True}},
-        subject="s", heading="h", message="m",
-    )
-    check("alerts fall back to the recovery address", sent_again == ["g@example.com"], str(sent_again))
-    app_main.email_sender = EyemailSender("https://eyemail.example", secret="s3cret")
-
-    print("a pending mailbox finishes itself")
-    app_main = __import__("app.main", fromlist=["x"])
-    calls = []
-    class Sender:
-        def register_mailbox(self, **kwargs):
-            calls.append(kwargs)
-            if len(calls) == 1:
-                raise __import__("app.emailer", fromlist=["x"]).EmailDeliveryError("boom")
-            return {"status": "created"}
-    app_main.email_sender = Sender()
-    recorded = []
-    app_main.repository.set_mailbox_ready = lambda user_id, ready=True: recorded.append((user_id, ready))
-    state = {"user_id": "usr_p", "eyemail_id": "p@eyemail.in", "full_name": "P",
-             "secondary_email": "g@example.com", "mailbox_ready": False}
-    after_failure = app_main.finish_pending_mailbox(state)
-    check("a failed retry leaves the flag false", after_failure.get("mailbox_ready") is False)
-    after_ok = app_main.finish_pending_mailbox(after_failure)
-    check("a successful retry marks the mailbox ready", after_ok.get("mailbox_ready") is True)
-    check("the flag is written once", recorded == [("usr_p", True)], str(recorded))
-    calls.clear()
-    app_main.finish_pending_mailbox({"user_id": "usr_q", "eyemail_id": "q@eyemail.in", "mailbox_ready": True})
-    check("a ready mailbox is not called again", calls == [], str(calls))
-
-    print("the mail session link")
-    sent.clear()
-    import urllib.request as _u2
-    class Ok:
-        status = 200
-        def __enter__(self): return self
-        def __exit__(self, *a): return False
-        def read(self): return b'{"customToken":"tok","email":"a@eyemail.in","url":"https://eyemail.in/login.html#t=tok"}'
-    def capture2(request, timeout=None):
-        import json as _json
-        sent.append({"url": request.full_url, "body": _json.loads(request.data) if request.data else None})
-        return Ok()
-    _u2.urlopen = capture2
-    try:
-        sender2 = EyemailSender("https://eyemail.example", secret="s3cret")
-        out = sender2.mail_session("usr_1")
-        check("mail session hits its endpoint", sent[-1]["url"].endswith("/api/internal/mail-session"), sent[-1]["url"])
-        check("mail session sends the uid", sent[-1]["body"] == {"uid": "usr_1"}, str(sent[-1]["body"]))
-        check("the link comes back", out.get("url") == "https://eyemail.in/login.html#t=tok", str(out))
-    finally:
-        _u2.urlopen = original
-
-    import urllib.error as _errs
-    def not_found(request, timeout=None):
-        raise _errs.HTTPError(request.full_url, 404, "Not Found", {}, None)
-    _u2.urlopen = not_found
-    try:
-        sender2.mail_session("usr_missing")
-        check("a missing mailbox raises", False, "no error")
-    except Exception as error:
-        check("a missing mailbox carries 404", getattr(error, "status", None) == 404, str(getattr(error, "status", None)))
-    finally:
-        _u2.urlopen = original
 
     print("cascade")
     repo.delete_account(user_id)
