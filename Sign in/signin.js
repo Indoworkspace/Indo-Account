@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261117-mail3';import {Api} from '../shared/api-client.js?v=20261117-mail3';Store.init();
+import {Store} from '../shared/session-store.js?v=20261117-split1';import {Api} from '../shared/api-client.js?v=20261117-split1';Store.init();
 // A mail link can send someone here to sign in and come straight back to their inbox.
 // Only a fixed set of destinations is allowed, so this can never be used as an open redirect.
 const nextPage=()=>{

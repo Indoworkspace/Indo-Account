@@ -63,7 +63,6 @@ export const Api={
   login:(identifier,password)=>request('/api/v1/auth/login',{method:'POST',authenticated:false,body:{identifier,password,device:device()}}).then(remember),
   logout:async()=>{try{if(token())await request('/api/v1/auth/logout',{method:'POST',keepalive:true})}finally{dropSession()}},
   me:()=>request('/api/v1/me'),
-  mailSession:()=>request('/api/v1/me/mail-session'),
   update:changes=>request('/api/v1/me',{method:'PATCH',body:changes}),
   requestRecoveryEmailOtp:email=>request('/api/v1/me/recovery-email/request',{method:'POST',body:{email}}),
   verifyRecoveryEmailOtp:(email,code)=>request('/api/v1/me/recovery-email/verify',{method:'POST',body:{email,code}}),
