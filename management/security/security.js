@@ -1,5 +1,5 @@
-import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261117-mail2';
-import {Api} from '../../shared/api-client.js?v=20261117-mail2';
+import {setup,user,Store,$,toast,esc} from '../shared/layout.js?v=20261117-mail3';
+import {Api} from '../../shared/api-client.js?v=20261117-mail3';
 
 const u=user();
 const icon={

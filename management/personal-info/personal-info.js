@@ -1,5 +1,5 @@
-import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail2';
-import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261117-mail2';
+import {icon as iconSvg} from '../../shared/icons.js?v=20261117-mail3';
+import {setup,user,Store,esc,$,toast} from '../shared/layout.js?v=20261117-mail3';
 
 const u=user();
 const rowIcon={id:'id',name:'user',nickname:'tag',gender:'gender',email:'envelope',phone:'phone',birthday:'cake',language:'translate',home:'house',work:'briefcase',other:'pin'};

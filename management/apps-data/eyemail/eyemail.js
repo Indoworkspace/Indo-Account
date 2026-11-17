@@ -1,5 +1,5 @@
-import {appPage} from '../app-page.js?v=20261117-mail2';
-import {Api} from '../../../shared/api-client.js?v=20261117-mail2';
+import {appPage} from '../app-page.js?v=20261117-mail3';
+import {Api} from '../../../shared/api-client.js?v=20261117-mail3';
 
 const panel = `
   <article class="panel">
