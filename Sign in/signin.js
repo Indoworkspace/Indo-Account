@@ -1,4 +1,10 @@
-import {Store} from '../shared/session-store.js?v=20261117-mail2';import {Api} from '../shared/api-client.js?v=20261117-mail2';Store.init();
+import {Store} from '../shared/session-store.js?v=20261117-mail3';import {Api} from '../shared/api-client.js?v=20261117-mail3';Store.init();
+// A mail link can send someone here to sign in and come straight back to their inbox.
+// Only a fixed set of destinations is allowed, so this can never be used as an open redirect.
+const nextPage=()=>{
+  const wanted=new URLSearchParams(location.search).get('next');
+  return wanted==='mail'?'../management/apps-data/eyemail/index.html?open=mail':'../management/index.html';
+};
 const $=s=>document.querySelector(s),form=$('#signin-form'),submit=$('#signin-button');$('#toggle-password').onclick=()=>{const p=$('#password'),button=$('#toggle-password'),hidden=p.type==='password';p.type=hidden?'text':'password';button.setAttribute('aria-label',hidden?'Hide password':'Show password');button.title=hidden?'Hide password':'Show password'};
 if(new URLSearchParams(location.search).get('reset')==='success'){const message=$('#message');message.className='success';message.textContent='Password updated. Sign in with your new password.';history.replaceState({},'',location.pathname)}
 
@@ -18,12 +24,6 @@ function returnToApp(url,key){
     submit.disabled=false;
     const go=event=>{if(event)event.preventDefault();location.href=url};
     submit.onclick=go;
-    // A mail link can send someone here to sign in and come straight back to their inbox.
-// Only a fixed set of destinations is allowed, so this can never be used as an open redirect.
-const nextPage=()=>{
-  const wanted=new URLSearchParams(location.search).get('next');
-  return wanted==='mail'?'../management/apps-data/eyemail/index.html?open=mail':'../management/index.html';
-};
 form.onsubmit=go;
     if(!document.querySelector('#return-to-app')){
       const link=document.createElement('a');

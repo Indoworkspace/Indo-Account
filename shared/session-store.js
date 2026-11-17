@@ -1,5 +1,5 @@
-import {Store as BaseStore} from './store.js?v=20261117-mail2';
-import {Api} from './api-client.js?v=20261117-mail2';
+import {Store as BaseStore} from './store.js?v=20261117-mail3';
+import {Api} from './api-client.js?v=20261117-mail3';
 
 const DATABASE_KEY='indo_unified_app_table';
 const ACTIVE_USER_KEY='indo_active_session';

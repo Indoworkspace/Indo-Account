@@ -1,4 +1,4 @@
-import {Store} from '../shared/session-store.js?v=20261117-mail2';
+import {Store} from '../shared/session-store.js?v=20261117-mail3';
 
 Store.init();
 const $=selector=>document.querySelector(selector),form=$('#signup-form');

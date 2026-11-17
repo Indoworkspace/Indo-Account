@@ -1,4 +1,4 @@
-import {setup,user,Store,toast} from '../shared/layout.js?v=20261117-mail2';
+import {setup,user,Store,toast} from '../shared/layout.js?v=20261117-mail3';
 
 const optional=[
   ['security','Security alerts','Password, recovery and account protection notices.'],
