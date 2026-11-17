@@ -608,6 +608,29 @@ def main() -> int:
     check("alerts fall back to the recovery address", sent_again == ["g@example.com"], str(sent_again))
     app_main.email_sender = EyemailSender("https://eyemail.example", secret="s3cret")
 
+    print("a pending mailbox finishes itself")
+    app_main = __import__("app.main", fromlist=["x"])
+    calls = []
+    class Sender:
+        def register_mailbox(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise __import__("app.emailer", fromlist=["x"]).EmailDeliveryError("boom")
+            return {"status": "created"}
+    app_main.email_sender = Sender()
+    recorded = []
+    app_main.repository.set_mailbox_ready = lambda user_id, ready=True: recorded.append((user_id, ready))
+    state = {"user_id": "usr_p", "eyemail_id": "p@eyemail.in", "full_name": "P",
+             "secondary_email": "g@example.com", "mailbox_ready": False}
+    after_failure = app_main.finish_pending_mailbox(state)
+    check("a failed retry leaves the flag false", after_failure.get("mailbox_ready") is False)
+    after_ok = app_main.finish_pending_mailbox(after_failure)
+    check("a successful retry marks the mailbox ready", after_ok.get("mailbox_ready") is True)
+    check("the flag is written once", recorded == [("usr_p", True)], str(recorded))
+    calls.clear()
+    app_main.finish_pending_mailbox({"user_id": "usr_q", "eyemail_id": "q@eyemail.in", "mailbox_ready": True})
+    check("a ready mailbox is not called again", calls == [], str(calls))
+
     print("cascade")
     repo.delete_account(user_id)
     left = [key for key in table.items if key[0] == f"USER#{user_id}"]
