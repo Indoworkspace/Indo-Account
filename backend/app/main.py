@@ -359,6 +359,41 @@ def register_eyemail_mailbox(profile: dict[str, Any]) -> None:
     logger.info("mailbox registered user=%s", user_id)
 
 
+def finish_pending_mailbox(state: dict[str, Any]) -> dict[str, Any]:
+    """Try once more to create a mailbox that a previous attempt did not confirm.
+
+    Called on sign-in and when the panel asks for the account, so a mailbox whose first attempt
+    timed out finishes itself. Idempotent on the Eyemail side: an existing mailbox answers
+    `exists`, which counts as done. Never raises - a failure only leaves the flag false.
+    """
+    if state.get("mailbox_ready"):
+        return state
+    user_id = str(state.get("user_id") or "")
+    address = str(state.get("eyemail_id") or "")
+    username = address.split("@")[0] if "@" in address else address
+    if not user_id or not username:
+        return state
+    try:
+        email_sender.register_mailbox(
+            user_id=user_id,
+            username=username,
+            name=str(state.get("full_name") or ""),
+            recovery_email=str(state.get("secondary_email") or ""),
+        )
+    except (EmailConfigurationError, EmailDeliveryError):
+        logger.warning("mailbox still pending user=%s", user_id)
+        return state
+    try:
+        repository.set_mailbox_ready(user_id)
+    except Exception:
+        logger.exception("could not record the mailbox state user=%s", user_id)
+        return state
+    logger.info("mailbox finished on retry user=%s", user_id)
+    state = dict(state)
+    state["mailbox_ready"] = True
+    return state
+
+
 def delete_eyemail_mailbox(user_id: str) -> None:
     """Remove the mailbox when the account goes. Never blocks the deletion."""
     try:
@@ -678,17 +713,21 @@ def signup(payload: SignupRequest) -> dict[str, Any]:
     try:
         register_eyemail_mailbox(profile)
     except (EmailConfigurationError, EmailDeliveryError):
-        # No mailbox means no usable account, so undo the signup instead of leaving a person
-        # with an address that cannot receive mail.
-        logger.exception("signup rolled back: mailbox failed user=%s", profile.get("user_id"))
-        try:
-            repository.delete_account(str(profile.get("user_id") or ""), require_verification=False)
-        except Exception:
-            logger.exception("rollback failed user=%s", profile.get("user_id"))
+        # The account is kept, not deleted. A mailbox may exist on the Eyemail side even when
+        # the answer never arrived, and deleting the account would strand that mailbox and keep
+        # the name taken. The mailbox finishes itself on the next sign-in instead.
+        logger.exception("mailbox pending after signup user=%s", profile.get("user_id"))
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            "Your mailbox could not be created just now. Please try again in a moment.",
+            "Your account was created and your mailbox is being set up. "
+            "Please sign in again in a minute.",
         ) from None
+    try:
+        repository.set_mailbox_ready(str(profile.get("user_id") or ""))
+        profile = dict(profile)
+        profile["mailbox_ready"] = True
+    except Exception:
+        logger.exception("could not record the mailbox state user=%s", profile.get("user_id"))
     return {"token": token, "profile": profile}
 
 
@@ -704,6 +743,7 @@ def login(payload: LoginRequest, request: Request) -> dict[str, Any]:
             account_failure_limit=settings.login_account_failure_limit,
             ip_failure_limit=settings.login_ip_failure_limit,
         )
+        profile = finish_pending_mailbox(profile)
         send_account_alert(
             profile,
             subject="New sign-in to your Indo Account",
@@ -826,7 +866,8 @@ def logout(token: Annotated[str, Depends(bearer_token)]) -> Response:
 def me(token: Annotated[str, Depends(bearer_token)]) -> dict[str, Any]:
     try:
         user_id = repository.user_from_token(token)
-        return repository.get_account_state(user_id, current_token=token)
+        state = repository.get_account_state(user_id, current_token=token)
+        return finish_pending_mailbox(state)
     except AuthenticationError as error:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
     except NotFoundError as error:
