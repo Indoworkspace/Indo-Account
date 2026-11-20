@@ -4,6 +4,7 @@ import copy
 import json
 import logging
 import hmac
+import secrets
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -2189,6 +2190,248 @@ class DynamoAccountRepository:
                 "updated_at": utc_now(),
             }
         )
+
+    # ---------------------------------------------------------------- sync
+    #
+    # Eyebrowse keeps six kinds of data in step across a person's own phones. The shape is
+    # deliberately boring: the record itself is stored once, keyed by its id, and every change
+    # also appends a small entry to a change log whose sort key is the server's own sequence.
+    # A client that has been away asks for everything after its cursor, and gets exactly the
+    # changes it has not seen - no timestamps from the phone are trusted for ordering, only for
+    # deciding which of two versions of the same record wins.
+
+    SYNC_TYPES = ("bookmarks", "tabs", "history", "logins", "settings", "pinned")
+
+    @classmethod
+    def _sync_prefix(cls, app: str, kind: str) -> str:
+        return f"SYNC#{app}#{kind}#"
+
+    def _sync_record_key(self, user_id: str, app: str, kind: str, record_id: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"{self._sync_prefix(app, kind)}REC#{record_id}"}
+
+    def _sync_change_key(self, user_id: str, app: str, kind: str, seq: str, record_id: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"{self._sync_prefix(app, kind)}CHG#{seq}#{record_id}"}
+
+    def _sync_meta_key(self, user_id: str, app: str, kind: str) -> dict[str, str]:
+        return {"PK": f"USER#{user_id}", "SK": f"{self._sync_prefix(app, kind)}META"}
+
+    @staticmethod
+    def _sync_sequence() -> str:
+        """A sortable, unique-enough sequence. Time first so the log reads in order."""
+        return f"{time.time_ns():020d}{secrets.token_hex(3)}"
+
+    def sync_settings(self, user_id: str, app: str) -> dict[str, dict[str, Any]]:
+        """Per-type on/off plus the last cursor, for the app's settings screen."""
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":prefix": f"SYNC#{app}#"},
+            ConsistentRead=True,
+        )
+        out: dict[str, dict[str, Any]] = {}
+        for item in response.get("Items", []):
+            sort_key = str(item.get("SK", ""))
+            if not sort_key.endswith("#META"):
+                continue
+            kind = sort_key.split("#")[2]
+            out[kind] = {
+                "enabled": bool(item.get("enabled", False)),
+                "count": int(item.get("count", 0)),
+                "last_update": item.get("last_update"),
+            }
+        for kind in self.SYNC_TYPES:
+            out.setdefault(kind, {"enabled": False, "count": 0, "last_update": None})
+        return out
+
+    def sync_type_enabled(self, user_id: str, app: str, kind: str) -> bool:
+        item = self.table.get_item(Key=self._sync_meta_key(user_id, app, kind), ConsistentRead=True).get("Item")
+        return bool(item and item.get("enabled"))
+
+    def set_sync_type(self, user_id: str, app: str, kind: str, enabled: bool) -> dict[str, Any]:
+        key = self._sync_meta_key(user_id, app, kind)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item") or {}
+        self.table.put_item(
+            Item={
+                **key,
+                "entity_type": "APP_SYNC_META",
+                "user_id": user_id,
+                "app": app,
+                "type": kind,
+                "enabled": bool(enabled),
+                "count": int(item.get("count", 0)),
+                "last_update": item.get("last_update"),
+                "updated_at": utc_now(),
+            }
+        )
+        return {"type": kind, "enabled": bool(enabled), "count": int(item.get("count", 0)),
+                "last_update": item.get("last_update")}
+
+    def sync_changes(
+        self,
+        user_id: str,
+        app: str,
+        kind: str,
+        *,
+        since: str | None,
+        limit: int,
+    ) -> tuple[list[dict[str, Any]], str | None, bool]:
+        """Everything changed after `since`, newest state per record, plus the next cursor."""
+        prefix = self._sync_prefix(app, kind)
+        low = f"{prefix}CHG#{since}" if since else f"{prefix}CHG#"
+        high = f"{prefix}CHG#~"
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND SK BETWEEN :low AND :high",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":low": low, ":high": high},
+            ScanIndexForward=True,
+            Limit=max(1, min(limit, 500)),
+            ConsistentRead=True,
+        )
+        changes = list(response.get("Items", []))
+        has_more = bool(response.get("LastEvaluatedKey"))
+
+        # A record may appear several times in the log. The last entry wins, and that is the one
+        # we return - the client only needs the current state.
+        latest: dict[str, dict[str, Any]] = {}
+        for item in changes:
+            latest[str(item.get("record_id"))] = item
+
+        records: list[dict[str, Any]] = []
+        for record_id, change in latest.items():
+            stored = self.table.get_item(
+                Key=self._sync_record_key(user_id, app, kind, record_id), ConsistentRead=True
+            ).get("Item")
+            if not stored:
+                continue
+            records.append(
+                {
+                    "id": record_id,
+                    "updated_at": stored.get("updated_at"),
+                    "deleted": bool(stored.get("deleted", False)),
+                    "payload": stored.get("payload"),
+                }
+            )
+        cursor = str(changes[-1].get("SK", "")).split("#CHG#")[-1] if changes else since
+        return records, cursor, has_more
+
+    def sync_put(
+        self,
+        user_id: str,
+        app: str,
+        kind: str,
+        records: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], str]:
+        """Store a batch. Last write wins by `updated_at`; the loser comes back to the caller."""
+        accepted: list[dict[str, Any]] = []
+        conflicts: list[dict[str, Any]] = []
+        last_seq = ""
+        for record in records:
+            record_id = str(record["id"])
+            incoming_at = str(record.get("updated_at") or "")
+            key = self._sync_record_key(user_id, app, kind, record_id)
+            stored = self.table.get_item(Key=key, ConsistentRead=True).get("Item")
+            if stored and str(stored.get("updated_at") or "") > incoming_at:
+                # The copy already here is newer. Keep it and hand it back, so the app can keep
+                # both rather than lose the one it just tried to write.
+                conflicts.append(
+                    {
+                        "id": record_id,
+                        "updated_at": stored.get("updated_at"),
+                        "deleted": bool(stored.get("deleted", False)),
+                        "payload": stored.get("payload"),
+                    }
+                )
+                continue
+            seq = self._sync_sequence()
+            last_seq = seq
+            self.table.put_item(
+                Item={
+                    **key,
+                    "entity_type": "APP_SYNC_RECORD",
+                    "user_id": user_id,
+                    "app": app,
+                    "type": kind,
+                    "record_id": record_id,
+                    "updated_at": incoming_at,
+                    "deleted": bool(record.get("deleted", False)),
+                    "payload": record.get("payload"),
+                    "server_seq": seq,
+                    "stored_at": utc_now(),
+                }
+            )
+            self.table.put_item(
+                Item={
+                    **self._sync_change_key(user_id, app, kind, seq, record_id),
+                    "entity_type": "APP_SYNC_CHANGE",
+                    "user_id": user_id,
+                    "app": app,
+                    "type": kind,
+                    "record_id": record_id,
+                    "server_seq": seq,
+                    "at": utc_now(),
+                }
+            )
+            accepted.append({"id": record_id, "updated_at": incoming_at})
+        self._touch_sync_meta(user_id, app, kind)
+        return conflicts, last_seq
+
+    def _touch_sync_meta(self, user_id: str, app: str, kind: str) -> None:
+        key = self._sync_meta_key(user_id, app, kind)
+        item = self.table.get_item(Key=key, ConsistentRead=True).get("Item") or {}
+        count = self._count_sync_records(user_id, app, kind)
+        self.table.put_item(
+            Item={
+                **key,
+                "entity_type": "APP_SYNC_META",
+                "user_id": user_id,
+                "app": app,
+                "type": kind,
+                "enabled": bool(item.get("enabled", False)),
+                "count": count,
+                "last_update": utc_now(),
+                "updated_at": utc_now(),
+            }
+        )
+
+    def _count_sync_records(self, user_id: str, app: str, kind: str) -> int:
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":prefix": f"{self._sync_prefix(app, kind)}REC#"},
+            Select="COUNT",
+            ConsistentRead=True,
+        )
+        return int(response.get("Count", 0))
+
+    def sync_delete_type(self, user_id: str, app: str, kind: str) -> int:
+        """Delete the cloud copy of one type. The on/off switch is left exactly as it was."""
+        prefix = self._sync_prefix(app, kind)
+        response = self.table.query(
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            ExpressionAttributeValues={":pk": f"USER#{user_id}", ":prefix": prefix},
+            ConsistentRead=True,
+        )
+        removed = 0
+        for item in response.get("Items", []):
+            sort_key = str(item.get("SK", ""))
+            if sort_key.endswith("#META"):
+                continue
+            self.table.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+            if "#REC#" in sort_key:
+                removed += 1
+        meta_key = self._sync_meta_key(user_id, app, kind)
+        meta = self.table.get_item(Key=meta_key, ConsistentRead=True).get("Item") or {}
+        self.table.put_item(
+            Item={
+                **meta_key,
+                "entity_type": "APP_SYNC_META",
+                "user_id": user_id,
+                "app": app,
+                "type": kind,
+                "enabled": bool(meta.get("enabled", False)),
+                "count": 0,
+                "last_update": utc_now(),
+                "updated_at": utc_now(),
+            }
+        )
+        return removed
 
     def get_app_box(self, user_id: str, app: str) -> dict[str, Any]:
         box = self._app_box(user_id, app)

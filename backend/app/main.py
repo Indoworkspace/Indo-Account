@@ -12,7 +12,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 import boto3
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status, Query
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from mangum import Mangum
@@ -293,6 +293,21 @@ class AppStatusUpdate(BaseModel):
 
 class AppPreferencesUpdate(BaseModel):
     preferences: dict[str, Any] = Field(default_factory=dict)
+
+
+class SyncRecord(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    updated_at: str = Field(min_length=1, max_length=40)
+    deleted: bool = False
+    payload: Any = None
+
+
+class SyncBatch(BaseModel):
+    records: list[SyncRecord] = Field(default_factory=list)
+
+
+class SyncToggle(BaseModel):
+    enabled: bool
 
 
 class AppSavedCreate(BaseModel):
@@ -1292,6 +1307,129 @@ def app_state(
         "preferences": box.get("preferences", {}),
         "counts": box["counts"],
     }
+
+
+SYNC_MAX_RECORDS = 200
+SYNC_MAX_RECORD_BYTES = 64 * 1024
+SYNC_MAX_REQUEST_BYTES = 1024 * 1024
+
+
+def sync_kind(kind: str) -> str:
+    if kind not in repository.SYNC_TYPES:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown sync type.")
+    return kind
+
+
+def sync_enabled_or_refuse(user_id: str, app: str, kind: str) -> None:
+    if not repository.sync_type_enabled(user_id, app, kind):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Sync for {kind} is switched off for this account.",
+        )
+
+
+@app.get("/api/v1/app/sync/status")
+def app_sync_status(
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    settings = repository.sync_settings(user_id, app)
+    return {
+        "types": [
+            {
+                "type": kind,
+                "enabled": settings[kind]["enabled"],
+                "count": settings[kind]["count"],
+                "last_update": settings[kind]["last_update"],
+            }
+            for kind in repository.SYNC_TYPES
+        ]
+    }
+
+
+@app.put("/api/v1/app/sync/{kind}")
+def app_sync_toggle(
+    kind: str,
+    payload: SyncToggle,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    return repository.set_sync_type(user_id, app, sync_kind(kind), payload.enabled)
+
+
+@app.get("/api/v1/app/sync/{kind}")
+def app_sync_pull(
+    kind: str,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+    since: Annotated[str | None, Query(max_length=64)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=False)
+    kind = sync_kind(kind)
+    sync_enabled_or_refuse(user_id, app, kind)
+    records, cursor, has_more = repository.sync_changes(user_id, app, kind, since=since, limit=limit)
+    return {"type": kind, "records": records, "cursor": cursor, "has_more": has_more}
+
+
+@app.post("/api/v1/app/sync/{kind}")
+def app_sync_push(
+    kind: str,
+    payload: SyncBatch,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    kind = sync_kind(kind)
+    sync_enabled_or_refuse(user_id, app, kind)
+    if len(payload.records) > SYNC_MAX_RECORDS:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Send at most {SYNC_MAX_RECORDS} records in one request.",
+        )
+    total = 0
+    records: list[dict[str, Any]] = []
+    for record in payload.records:
+        body = json.dumps(record.payload, separators=(",", ":"), default=str)
+        size = len(body.encode("utf-8"))
+        if size > SYNC_MAX_RECORD_BYTES:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"Record {record.id} is larger than {SYNC_MAX_RECORD_BYTES} bytes.",
+            )
+        total += size
+        records.append(record.model_dump())
+    if total > SYNC_MAX_REQUEST_BYTES:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That batch is too large. Send fewer records.",
+        )
+    conflicts, cursor = repository.sync_put(user_id, app, kind, records)
+    return {
+        "type": kind,
+        "accepted": len(records) - len(conflicts),
+        "conflicts": conflicts,
+        "cursor": cursor,
+    }
+
+
+@app.delete("/api/v1/app/sync/{kind}")
+def app_sync_delete(
+    kind: str,
+    request: Request,
+    session: Annotated[tuple[str, str, str], Depends(app_session)],
+) -> dict[str, Any]:
+    user_id, app, _session_id = session
+    enforce_app_rate_limit(request, user_id, app, write=True)
+    kind = sync_kind(kind)
+    removed = repository.sync_delete_type(user_id, app, kind)
+    return {"type": kind, "deleted": removed}
 
 
 @app.patch("/api/v1/app/preferences")
