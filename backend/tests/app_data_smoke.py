@@ -86,6 +86,10 @@ class FakeTable:
         rows = [dict(item) for (item_pk, sk), item in self.items.items() if item_pk == pk]
         if prefix:
             rows = [row for row in rows if str(row["SK"]).startswith(prefix)]
+        if ":low" in ExpressionAttributeValues and ":high" in ExpressionAttributeValues:
+            low = ExpressionAttributeValues[":low"]
+            high = ExpressionAttributeValues[":high"]
+            rows = [row for row in rows if low < str(row["SK"]) <= high]
         rows.sort(key=lambda row: str(row["SK"]), reverse=not ScanIndexForward)
         if Limit:
             rows = rows[: int(Limit)]
@@ -565,6 +569,65 @@ def main() -> int:
         _urllib.urlopen = original
 
     check("no SES sender is left in the module", not hasattr(__import__("app.emailer", fromlist=["x"]), "SesEmailSender"))
+
+    print("app sync")
+    repo = api.repository
+    user = "usr_sync"
+    repo.set_sync_type(user, "EYEBROWSE", "bookmarks", True)
+    check("a type starts switched off until it is turned on",
+          repo.sync_type_enabled(user, "EYEBROWSE", "bookmarks") is True)
+    check("other types stay off", repo.sync_type_enabled(user, "EYEBROWSE", "logins") is False)
+
+    conflicts, cursor = repo.sync_put(user, "EYEBROWSE", "bookmarks", [
+        {"id": "b1", "updated_at": "2026-01-01T10:00:00Z", "deleted": False, "payload": {"url": "https://a.example"}},
+        {"id": "b2", "updated_at": "2026-01-01T10:01:00Z", "deleted": False, "payload": {"url": "https://b.example"}},
+    ])
+    check("a first push accepts everything", conflicts == [] and cursor, str(conflicts))
+    records, new_cursor, more = repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=None, limit=100)
+    check("a fresh client gets both records", len(records) == 2, str(len(records)))
+    check("records come back with their payload", records[0]["payload"] in ({"url": "https://a.example"}, {"url": "https://b.example"}))
+    check("there is nothing more to fetch", more is False)
+
+    records_after, cursor_after, _ = repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=new_cursor, limit=100)
+    check("a client that is up to date gets nothing", records_after == [], str(records_after))
+    check("the cursor is stable when nothing changed", cursor_after == new_cursor)
+
+    # a newer copy on the server wins, and comes back so the app can keep both
+    repo.sync_put(user, "EYEBROWSE", "bookmarks", [
+        {"id": "b1", "updated_at": "2026-01-02T10:00:00Z", "deleted": False, "payload": {"url": "https://a2.example"}},
+    ])
+    conflicts, _ = repo.sync_put(user, "EYEBROWSE", "bookmarks", [
+        {"id": "b1", "updated_at": "2026-01-01T09:00:00Z", "deleted": False, "payload": {"url": "https://old.example"}},
+    ])
+    check("an older write is refused as a conflict", len(conflicts) == 1, str(conflicts))
+    check("the conflict hands back the server copy", conflicts[0]["payload"] == {"url": "https://a2.example"}, str(conflicts[0]["payload"]))
+
+    # a delete travels as a tombstone, so the other phone removes it too
+    repo.sync_put(user, "EYEBROWSE", "bookmarks", [
+        {"id": "b2", "updated_at": "2026-01-03T10:00:00Z", "deleted": True, "payload": None},
+    ])
+    records, _, _ = repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=None, limit=100)
+    deleted = [row for row in records if row["id"] == "b2"]
+    check("a delete comes back as a tombstone", deleted and deleted[0]["deleted"] is True, str(deleted))
+
+    settings = repo.sync_settings(user, "EYEBROWSE")
+    check("every type is reported", sorted(settings) == sorted(repo.SYNC_TYPES), str(sorted(settings)))
+    check("the status carries a count", settings["bookmarks"]["count"] == 2, str(settings["bookmarks"]))
+
+    removed = repo.sync_delete_type(user, "EYEBROWSE", "bookmarks")
+    check("deleting the cloud copy removes the records", removed == 2, str(removed))
+    check("deleting the cloud copy leaves the switch alone",
+          repo.sync_type_enabled(user, "EYEBROWSE", "bookmarks") is True)
+    check("nothing is left to sync after a wipe",
+          repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=None, limit=100)[0] == [])
+
+    # payloads are opaque: a string payload survives untouched
+    repo.sync_put(user, "EYEBROWSE", "logins", [
+        {"id": "l1", "updated_at": "2026-01-04T10:00:00Z", "deleted": False, "payload": "ENCRYPTED-BLOB-=="},
+    ])
+    stored, _, _ = repo.sync_changes(user, "EYEBROWSE", "logins", since=None, limit=10)
+    check("an opaque payload is stored and returned unchanged",
+          stored and stored[0]["payload"] == "ENCRYPTED-BLOB-==", str(stored))
 
     print("cascade")
     repo.delete_account(user_id)
