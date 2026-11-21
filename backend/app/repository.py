@@ -2276,7 +2276,11 @@ class DynamoAccountRepository:
     ) -> tuple[list[dict[str, Any]], str | None, bool]:
         """Everything changed after `since`, newest state per record, plus the next cursor."""
         prefix = self._sync_prefix(app, kind)
-        low = f"{prefix}CHG#{since}" if since else f"{prefix}CHG#"
+        # BETWEEN is inclusive at both ends and a cursor names the last change the client has
+        # already seen, so the lower bound has to sit strictly above every entry carrying that
+        # sequence. Appending the highest code point does that: it sorts above any record id,
+        # and every later sequence still sorts above it.
+        low = f"{prefix}CHG#{since}#\uffff" if since else f"{prefix}CHG#"
         high = f"{prefix}CHG#~"
         response = self.table.query(
             KeyConditionExpression="PK = :pk AND SK BETWEEN :low AND :high",
@@ -2309,7 +2313,10 @@ class DynamoAccountRepository:
                     "payload": stored.get("payload"),
                 }
             )
-        cursor = str(changes[-1].get("SK", "")).split("#CHG#")[-1] if changes else since
+        # The cursor is the sequence alone: digits and hex only, so it survives being put in a
+        # query string. It names the last change this client has seen, and the lower bound below
+        # is made strictly greater than it.
+        cursor = str(changes[-1].get("SK", "")).split("#CHG#")[-1].rsplit("#", 1)[0] if changes else since
         return records, cursor, has_more
 
     def sync_put(
