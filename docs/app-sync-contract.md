@@ -49,13 +49,15 @@ GET /api/v1/app/sync/{type}?since={cursor}&limit=200
     {"id": "b1", "updated_at": "2026-11-20T09:30:00Z", "deleted": false, "payload": {...}},
     {"id": "b2", "updated_at": "2026-11-20T09:31:00Z", "deleted": true,  "payload": null}
   ],
-  "cursor": "0000000176270000000012ab34cd",
+  "cursor": "01795260598594383992deff09",
   "has_more": false
 }
 ```
 
 - Omit `since` on a first sync; the server returns everything it has, oldest change first.
-- Store `cursor` and send it back next time. It is opaque: a string, up to 64 characters.
+- Store `cursor` and send it back next time. It is opaque, URL-safe (digits and hex only), up to
+  64 characters, and it names the last change you have already seen - sending it back never
+  returns that change again.
 - `limit` defaults to 200 and is capped at 500. When `has_more` is true, call again with the cursor
   you just received.
 - A record appears **once** per response, in its current state, even if it changed several times
@@ -75,7 +77,7 @@ POST /api/v1/app/sync/{type}
   "type": "bookmarks",
   "accepted": 1,
   "conflicts": [],
-  "cursor": "0000000176270000000012ab34ce"
+  "cursor": "017952605986487562718720e1"
 }
 ```
 
