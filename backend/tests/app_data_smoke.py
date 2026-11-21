@@ -89,7 +89,7 @@ class FakeTable:
         if ":low" in ExpressionAttributeValues and ":high" in ExpressionAttributeValues:
             low = ExpressionAttributeValues[":low"]
             high = ExpressionAttributeValues[":high"]
-            rows = [row for row in rows if low < str(row["SK"]) <= high]
+            rows = [row for row in rows if low <= str(row["SK"]) <= high]
         rows.sort(key=lambda row: str(row["SK"]), reverse=not ScanIndexForward)
         if Limit:
             rows = rows[: int(Limit)]
@@ -591,6 +591,9 @@ def main() -> int:
     records_after, cursor_after, _ = repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=new_cursor, limit=100)
     check("a client that is up to date gets nothing", records_after == [], str(records_after))
     check("the cursor is stable when nothing changed", cursor_after == new_cursor)
+    check("a cursor survives a query string", "#" not in new_cursor and " " not in new_cursor, new_cursor)
+    replayed, _, _ = repo.sync_changes(user, "EYEBROWSE", "bookmarks", since=cursor, limit=100)
+    check("the push cursor does not replay what was just written", replayed == [], str(replayed))
 
     # a newer copy on the server wins, and comes back so the app can keep both
     repo.sync_put(user, "EYEBROWSE", "bookmarks", [
